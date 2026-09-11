@@ -1,7 +1,7 @@
 from decimal import Decimal
 
 from core.config import Settings
-from execution.contracts import ExecutionMode, OrderIntent
+from execution.contracts import ExecutionMode, OrderIntent, OrderSide
 from execution.safety import ExecutionPreflight
 
 
@@ -10,7 +10,7 @@ def order(**changes) -> OrderIntent:
         "asset_id": "SOL/USDC",
         "input_mint": "So11111111111111111111111111111111111111112",
         "output_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-        "side": "buy",
+        "side": OrderSide.BUY,
         "input_amount_atomic": 1_000_000,
         "notional": Decimal(1),
         "max_slippage_bps": 50,
