@@ -54,3 +54,19 @@ def test_emergency_stop_blocks_all_decisions() -> None:
     guardian.emergency_stop()
     result = guardian.evaluate(make_decision())
     assert result.verdict == GuardianVerdict.EMERGENCY_STOP
+
+
+def test_negative_telemetry_fails_closed() -> None:
+    result = Guardian(make_settings()).evaluate(
+        make_decision(), current_drawdown=Decimal("-0.01")
+    )
+    assert result.verdict == GuardianVerdict.REJECT
+    assert "cannot be negative" in result.reasons[0]
+
+
+def test_non_finite_telemetry_fails_closed() -> None:
+    result = Guardian(make_settings()).evaluate(
+        make_decision(), daily_loss=Decimal("NaN")
+    )
+    assert result.verdict == GuardianVerdict.REJECT
+    assert "non-finite" in result.reasons[0]
