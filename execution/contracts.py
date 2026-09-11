@@ -13,11 +13,16 @@ class ExecutionMode(StrEnum):
     TINY_LIVE = "tiny_live"
 
 
+class OrderSide(StrEnum):
+    BUY = "buy"
+    SELL = "sell"
+
+
 class OrderIntent(BaseModel):
     asset_id: str
     input_mint: str
     output_mint: str
-    side: str
+    side: OrderSide
     input_amount_atomic: int = Field(gt=0)
     notional: Decimal = Field(gt=0)
     max_slippage_bps: int = Field(gt=0)
