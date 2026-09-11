@@ -14,7 +14,7 @@ Autonomous research and execution platform for spot crypto trading, designed aro
 - **Evidence over narratives.** Every promoted artifact needs lineage, validation, and rollback metadata.
 - **Small-capital aware.** Fees, slippage, liquidity, and minimum executable size matter from the first simulation.
 
-## Initial boundaries
+## Architecture
 
 ```text
 Market / on-chain / external data
@@ -47,19 +47,48 @@ Market / on-chain / external data
 
 The Guardian is deliberately independent of strategy generation. It enforces hard loss, drawdown, sizing, uncertainty, and emergency-stop boundaries. Those boundaries are not optimization targets and are not negotiable by an AI agent.
 
-## Repository roadmap
+## Repository layout
 
 - `core/` — domain contracts and validated configuration
-- `security/` — Guardian, policy, credential isolation, emergency controls
+- `security/` — Guardian, policy, emergency controls
 - `data/` — acquisition, normalization, quality, provenance, feature store
 - `intelligence/` — model laboratory, uncertainty, regime inference
-- `agents/` — specialized research/coding/critique agents
-- `simulation/` — adversarial digital twin and walk-forward evaluation
+- `research/` — experiment lineage and reproducibility
 - `execution/` — route/timing/size/slippage optimization and venue adapters
-- `dashboard/` — command center and forensic decision graph
-- `tests/` — unit, integration, property, regression, and safety tests
-- `docs/` — architecture, protocols, experiment standards, runbooks
+- `simulation/` — portfolio simulation and future adversarial digital twin
+- `app/` — local FastAPI control plane and CLI
+- `tests/` — unit and safety regression tests
+- `docs/` — architecture and local runbook
+
+## Quick start
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e '.[dev]'
+cp .env.example .env
+ruff check .
+mypy core data execution intelligence research security simulation
+pytest -q
+advanced-ai-trader
+```
+
+Then open `http://127.0.0.1:8000/docs`.
+
+See [`docs/RUNBOOK.md`](docs/RUNBOOK.md) for the complete laptop/Ollama setup and the required research-to-live deployment ladder.
+
+## Safety boundary
+
+The default mode is `research`. No private key is stored in this repository and the general AI/LLM process is not allowed to sign transactions. The intended deployment ladder is:
+
+`research → backtest → walk-forward → stress → paper → shadow → tiny_live → validated scaling`
+
+A live wallet must be isolated and protected by independent policy enforcement. Real-money activation remains a deliberate deployment step, not an automatic consequence of successful training.
+
+## Jupiter integration
+
+The execution layer is intentionally abstracted from a particular Jupiter API version. Current production integration should use the current Jupiter Developer Platform rather than legacy endpoints. Quote data is treated as an observation: the system records expected output, route, timestamp, execution result, realized fees/slippage and failures so execution quality can be learned empirically.
 
 ## Development status
 
-The `foundation` branch currently contains the first safety and project contracts. The next stages are data provenance/quality, experiment lineage, simulation primitives, and execution interfaces. Live credentials and private keys are intentionally absent.
+The `foundation` branch contains the safety contracts, provenance/quality primitives, token universe checks, execution safety, Jupiter adapter boundary, deterministic portfolio simulation, experiment lineage, local API, CI, and the laptop runbook. Larger research components are designed as replaceable modules so they can be validated independently before they receive capital.
