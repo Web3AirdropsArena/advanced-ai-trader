@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
 from pydantic import BaseModel, Field
 
 
@@ -24,4 +25,4 @@ class ExperimentRecord(BaseModel):
 
     @classmethod
     def now(cls, **kwargs):
-        return cls(started_at=datetime.now(timezone.utc), **kwargs)
+        return cls(started_at=datetime.now(UTC), **kwargs)
