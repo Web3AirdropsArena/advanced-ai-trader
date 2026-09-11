@@ -1,7 +1,7 @@
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import Field, field_validator, ValidationInfo
+from pydantic import Field, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -36,13 +36,14 @@ class Settings(BaseSettings):
 
     @field_validator("min_cash_reserve_fraction")
     @classmethod
-def reserve_must_fit_position_limit(
-    cls, value: Decimal, info: ValidationInfo
-) -> Decimal:
-    max_position = info.data.get("max_position_fraction") if info.data else None
-    if max_position is not None and value + max_position > Decimal(1):
-        raise ValueError("cash reserve plus maximum position fraction cannot exceed 100%")
-    return value
+    def reserve_must_fit_position_limit(
+        cls, value: Decimal, info: ValidationInfo
+    ) -> Decimal:
+        max_position = info.data.get("max_position_fraction") if info.data else None
+        if max_position is not None and value + max_position > Decimal(1):
+            raise ValueError("cash reserve plus maximum position fraction cannot exceed 100%")
+        return value
+
 
 def load_settings() -> Settings:
     return Settings()
