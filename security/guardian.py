@@ -28,8 +28,8 @@ class Guardian:
         self,
         decision: Decision,
         *,
-        current_drawdown: Decimal = Decimal("0"),
-        daily_loss: Decimal = Decimal("0"),
+        current_drawdown: Decimal = Decimal(0),
+        daily_loss: Decimal = Decimal(0),
     ) -> GuardianResult:
         reasons: list[str] = []
 
@@ -71,7 +71,7 @@ class Guardian:
         if decision.uncertainty > 0.80:
             return GuardianResult(
                 verdict=GuardianVerdict.HOLD,
-                allowed_fraction=Decimal("0"),
+                allowed_fraction=Decimal(0),
                 reasons=reasons,
                 policy_version="guardian-v1",
             )
