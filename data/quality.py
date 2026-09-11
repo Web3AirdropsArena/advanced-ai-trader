@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from data.contracts import DataQuality, Observation, DataQualityReport
+from data.contracts import DataQuality, DataQualityReport, Observation
 
 
 class DataQualityGate:
@@ -32,6 +32,6 @@ class DataQualityGate:
             quality=quality,
             reliability=observation.source_reliability,
             reasons=reasons,
-            checked_at=datetime.now(timezone.utc),
+            checked_at=datetime.now(UTC),
             source=observation.source,
         )
