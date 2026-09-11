@@ -1,7 +1,7 @@
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import Field, ValidationInfo, field_validator
+from pydantic import Field, SecretStr, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -19,7 +19,8 @@ class Settings(BaseSettings):
     trading_mode: Literal["research", "paper", "shadow", "tiny_live"] = "research"
 
     solana_rpc_url: str = "https://api.mainnet-beta.solana.com"
-    jupiter_api_base: str = "https://api.jup.ag"
+    jupiter_api_base: str = "https://api.jup.ag/swap/v2"
+    jupiter_api_key: SecretStr | None = None
     trading_wallet_public_key: str | None = None
 
     max_position_fraction: Decimal = Field(default=Decimal("0.10"), gt=0, le=Decimal(1))
