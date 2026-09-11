@@ -9,6 +9,8 @@ from execution.contracts import ExecutionMode, OrderIntent
 class ExecutionPreflight:
     """Reject unsafe execution intents before any venue adapter is called."""
 
+    MAX_SLIPPAGE_BPS = 500
+
     def __init__(self, settings: Settings):
         self.settings = settings
 
@@ -18,13 +20,25 @@ class ExecutionPreflight:
         if order.execution_mode == ExecutionMode.TINY_LIVE:
             errors.append("tiny-live execution is not enabled by the foundation")
 
-        if order.notional <= 0:
-            errors.append("notional must be positive")
+        if not order.asset_id.strip():
+            errors.append("asset_id must not be empty")
 
-        if order.max_slippage_bps > 500:
+        if not order.decision_id.strip():
+            errors.append("decision_id must not be empty")
+
+        if not order.guardian_policy_version.strip():
+            errors.append("guardian policy version must not be empty")
+
+        if order.input_amount_atomic <= 0:
+            errors.append("input amount must be positive")
+
+        if not order.notional.is_finite() or order.notional <= 0:
+            errors.append("notional must be finite and positive")
+
+        if order.max_slippage_bps > self.MAX_SLIPPAGE_BPS:
             errors.append("slippage ceiling exceeds foundation safety limit")
 
-        if order.input_mint == order.output_mint:
+        if order.input_mint.strip() == order.output_mint.strip():
             errors.append("input and output assets must differ")
 
         if order.notional > Decimal(22) and self.settings.app_env != "production":
