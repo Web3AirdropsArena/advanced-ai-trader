@@ -1,7 +1,12 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "advanced-ai-trader"
 version = "0.1.0"
 description = "Autonomous, safety-first research and execution platform for spot crypto trading"
+readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
   "pydantic>=2.8,<3",
@@ -43,7 +48,3 @@ asyncio_mode = "auto"
 [tool.mypy]
 python_version = "3.11"
 strict = true
-
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
