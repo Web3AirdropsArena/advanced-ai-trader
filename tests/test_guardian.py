@@ -49,6 +49,19 @@ def test_holds_when_uncertainty_is_too_high() -> None:
     assert result.allowed_fraction == 0
 
 
+def test_holds_when_confidence_is_too_low() -> None:
+    result = Guardian(make_settings()).evaluate(make_decision(confidence=0.1))
+    assert result.verdict == GuardianVerdict.HOLD
+    assert result.allowed_fraction == 0
+
+
+def test_holds_hold_and_no_trade_actions() -> None:
+    for action in (DecisionAction.HOLD, DecisionAction.NO_TRADE):
+        result = Guardian(make_settings()).evaluate(make_decision(action=action))
+        assert result.verdict == GuardianVerdict.HOLD
+        assert result.allowed_fraction == 0
+
+
 def test_emergency_stop_blocks_all_decisions() -> None:
     guardian = Guardian(make_settings())
     guardian.emergency_stop()
