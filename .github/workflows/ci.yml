@@ -18,6 +18,6 @@ jobs:
       - name: Ruff
         run: ruff check .
       - name: Mypy
-        run: mypy core data execution intelligence research security simulation
+        run: mypy app core data execution intelligence research security simulation
       - name: Tests
         run: pytest -q
