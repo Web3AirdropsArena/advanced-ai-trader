@@ -17,6 +17,7 @@ class Guardian:
 
     POLICY_VERSION = "guardian-v1"
     UNCERTAINTY_HOLD_THRESHOLD = 0.80
+    CONFIDENCE_HOLD_THRESHOLD = 0.20
 
     def __init__(self, settings: Settings):
         self.settings = settings
@@ -64,10 +65,17 @@ class Guardian:
                 policy_version=self.POLICY_VERSION,
             )
 
-        if decision.action == DecisionAction.NO_TRADE:
+        if decision.action in (DecisionAction.NO_TRADE, DecisionAction.HOLD):
             return GuardianResult(
                 verdict=GuardianVerdict.HOLD,
-                reasons=["decision explicitly requests no trade"],
+                reasons=[f"decision action is {decision.action.value}"],
+                policy_version=self.POLICY_VERSION,
+            )
+
+        if decision.confidence < self.CONFIDENCE_HOLD_THRESHOLD:
+            return GuardianResult(
+                verdict=GuardianVerdict.HOLD,
+                reasons=["model confidence is below execution threshold"],
                 policy_version=self.POLICY_VERSION,
             )
 
