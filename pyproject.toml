@@ -11,6 +11,8 @@ dependencies = [
   "scipy>=1.14,<2",
   "httpx>=0.27,<1",
   "structlog>=24.4,<26",
+  "fastapi>=0.115,<1",
+  "uvicorn[standard]>=0.30,<1",
 ]
 
 [project.optional-dependencies]
@@ -20,6 +22,9 @@ dev = [
   "ruff>=0.6,<1",
   "mypy>=1.11,<2",
 ]
+
+[project.scripts]
+advanced-ai-trader = "app.cli:main"
 
 [tool.ruff]
 line-length = 100
