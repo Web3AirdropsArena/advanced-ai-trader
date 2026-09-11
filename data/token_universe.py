@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
+
 from pydantic import BaseModel, Field
 
 
@@ -26,7 +27,7 @@ class TokenGateResult(BaseModel):
 class TokenSafetyGate:
     """Hard pre-trade screening; discovery does not imply eligibility."""
 
-    def __init__(self, min_liquidity_usd: Decimal = Decimal("5000")):
+    def __init__(self, min_liquidity_usd: Decimal = Decimal(5000)):
         self.min_liquidity_usd = min_liquidity_usd
 
     def evaluate(self, token: TokenCandidate) -> TokenGateResult:
@@ -43,7 +44,10 @@ class TokenSafetyGate:
             reasons.append("insufficient independent source corroboration")
 
         score = 1.0
-        score -= min(0.35, float(max(Decimal("0"), self.min_liquidity_usd - token.liquidity_usd) / self.min_liquidity_usd))
+        score -= min(
+            0.35,
+            float(max(Decimal(0), self.min_liquidity_usd - token.liquidity_usd) / self.min_liquidity_usd),
+        )
         score -= 0.20 if token.mint_authority_active else 0
         score -= 0.20 if token.freeze_authority_active else 0
         score -= 0.15 if token.holder_count < 50 else 0
