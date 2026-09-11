@@ -37,6 +37,7 @@ packages = ["app", "core", "data", "execution", "intelligence", "research", "sec
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+lint.ignore = ["I001"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["app", "core", "data", "execution", "intelligence", "research", "security", "simulation"]
