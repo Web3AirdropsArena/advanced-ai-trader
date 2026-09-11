@@ -8,7 +8,7 @@ def test_simulator_accounts_for_fees_and_slippage() -> None:
         Decimal(22),
         [
             Fill(
-                price=Decimal("10"),
+                price=Decimal(10),
                 quantity=Decimal(1),
                 fee=Decimal("0.10"),
                 slippage=Decimal("0.05"),
