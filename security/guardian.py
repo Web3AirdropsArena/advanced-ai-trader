@@ -61,14 +61,14 @@ class Guardian:
                 policy_version="guardian-v1",
             )
 
-        if decision.uncertainty > Decimal("0.80"):
+        if decision.uncertainty > 0.80:
             reasons.append("model uncertainty exceeds execution threshold")
 
         requested = min(decision.target_fraction, self.settings.max_position_fraction)
         if decision.target_fraction > self.settings.max_position_fraction:
             reasons.append("position size capped by immutable policy")
 
-        if decision.uncertainty > Decimal("0.80"):
+        if decision.uncertainty > 0.80:
             return GuardianResult(
                 verdict=GuardianVerdict.HOLD,
                 allowed_fraction=Decimal("0"),
