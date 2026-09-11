@@ -4,6 +4,8 @@ from datetime import UTC, datetime
 
 from pydantic import BaseModel, Field
 
+from typing import Any
+
 
 class ExperimentRecord(BaseModel):
     """Scientific record required before an artifact can become production knowledge."""
@@ -24,5 +26,5 @@ class ExperimentRecord(BaseModel):
     reproducibility_hash: str
 
     @classmethod
-    def now(cls, **kwargs):
-        return cls(started_at=datetime.now(UTC), **kwargs)
+    def now(cls, **kwargs: Any) -> ExperimentRecord:
+    return cls(started_at=datetime.now(UTC), **kwargs)
