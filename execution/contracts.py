@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 from enum import StrEnum
+
 from pydantic import BaseModel, Field
 
 
@@ -14,12 +15,24 @@ class ExecutionMode(StrEnum):
 
 class OrderIntent(BaseModel):
     asset_id: str
+    input_mint: str
+    output_mint: str
     side: str
+    input_amount_atomic: int = Field(gt=0)
     notional: Decimal = Field(gt=0)
-    max_slippage_bps: Decimal = Field(gt=0)
+    max_slippage_bps: int = Field(gt=0)
     execution_mode: ExecutionMode = ExecutionMode.RESEARCH
     decision_id: str
     guardian_policy_version: str
+
+
+class ExecutionQuote(BaseModel):
+    venue: str
+    input_amount_atomic: int = Field(gt=0)
+    expected_output_atomic: int = Field(ge=0)
+    price_impact: Decimal = Field(ge=0)
+    route_summary: str
+    raw_fingerprint: str
 
 
 class RouteCandidate(BaseModel):
