@@ -8,8 +8,8 @@ from decimal import Decimal
 class Fill:
     price: Decimal
     quantity: Decimal
-    fee: Decimal = Decimal("0")
-    slippage: Decimal = Decimal("0")
+    fee: Decimal = Decimal(0)
+    slippage: Decimal = Decimal(0)
 
 
 @dataclass(frozen=True)
@@ -33,8 +33,8 @@ class PortfolioSimulator:
             raise ValueError("initial_cash cannot be negative")
 
         cash = initial_cash
-        fees = Decimal("0")
-        slippage = Decimal("0")
+        fees = Decimal(0)
+        slippage = Decimal(0)
         for fill in fills:
             if fill.quantity < 0 or fill.price < 0 or fill.fee < 0 or fill.slippage < 0:
                 raise ValueError("fills cannot contain negative values")
