@@ -26,6 +26,9 @@ dev = [
 [project.scripts]
 advanced-ai-trader = "app.cli:main"
 
+[tool.hatch.build.targets.wheel]
+packages = ["app", "core", "data", "execution", "intelligence", "research", "security", "simulation"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"
