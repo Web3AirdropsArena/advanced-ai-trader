@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
+
 from pydantic import BaseModel, Field
 
 
@@ -50,6 +51,6 @@ class PricePoint(BaseModel):
     asset_id: str
     timestamp: datetime
     price: Decimal = Field(gt=0)
-    volume: Decimal = Field(default=Decimal("0"), ge=0)
+    volume: Decimal = Field(default=Decimal(0), ge=0)
     source: str
     quality: DataQuality
