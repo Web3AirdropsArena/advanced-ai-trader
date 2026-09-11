@@ -1,9 +1,7 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from data.provenance import Provenance
 from data.quality_engine import QualityEngine
-
-UTC = timezone.utc
 
 
 def test_stale_observation_is_rejected() -> None:
@@ -37,11 +35,17 @@ def test_clock_inversion_is_rejected() -> None:
 def test_provenance_hash_is_deterministic() -> None:
     observed = datetime(2026, 1, 1, tzinfo=UTC)
     a = Provenance.from_payload(
-        source="test", source_version="1", observed_at=observed,
-        received_at=observed, payload={"b": 2, "a": 1}
+        source="test",
+        source_version="1",
+        observed_at=observed,
+        received_at=observed,
+        payload={"b": 2, "a": 1},
     )
     b = Provenance.from_payload(
-        source="test", source_version="1", observed_at=observed,
-        received_at=observed, payload={"a": 1, "b": 2}
+        source="test",
+        source_version="1",
+        observed_at=observed,
+        received_at=observed,
+        payload={"a": 1, "b": 2},
     )
     assert a.payload_hash == b.payload_hash
