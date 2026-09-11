@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 
 from pydantic import BaseModel, Field
-
-from typing import Any
 
 
 class ExperimentRecord(BaseModel):
@@ -27,4 +26,4 @@ class ExperimentRecord(BaseModel):
 
     @classmethod
     def now(cls, **kwargs: Any) -> ExperimentRecord:
-    return cls(started_at=datetime.now(UTC), **kwargs)
+        return cls(started_at=datetime.now(UTC), **kwargs)
