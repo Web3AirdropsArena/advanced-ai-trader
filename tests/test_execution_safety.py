@@ -12,7 +12,7 @@ def order(**changes) -> OrderIntent:
         "output_mint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
         "side": "buy",
         "input_amount_atomic": 1_000_000,
-        "notional": Decimal("1"),
+        "notional": Decimal(1),
         "max_slippage_bps": 50,
         "execution_mode": ExecutionMode.RESEARCH,
         "decision_id": "decision-test",
