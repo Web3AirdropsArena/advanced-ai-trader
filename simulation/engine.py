@@ -22,24 +22,33 @@ class SimulationResult:
 
 
 class PortfolioSimulator:
-    """Minimal deterministic accounting core.
+    """Minimal deterministic buy-side accounting core.
 
-    This is deliberately not a market simulator yet. Microstructure, DEX
-    routing, latency and adversarial liquidity will be layered on top of it.
+    This is deliberately not a market simulator yet. Each fill is currently
+    modeled as a cash outflow; sells, holdings, PnL and mark-to-market are
+    intentionally deferred to the full portfolio simulator.
     """
 
     def run(self, initial_cash: Decimal, fills: list[Fill]) -> SimulationResult:
-        if initial_cash < 0:
-            raise ValueError("initial_cash cannot be negative")
+        if not initial_cash.is_finite() or initial_cash < 0:
+            raise ValueError("initial_cash must be finite and non-negative")
 
         cash = initial_cash
         fees = Decimal(0)
         slippage = Decimal(0)
         for fill in fills:
-            if fill.quantity < 0 or fill.price < 0 or fill.fee < 0 or fill.slippage < 0:
-                raise ValueError("fills cannot contain negative values")
+            values = (fill.price, fill.quantity, fill.fee, fill.slippage)
+            if any(not value.is_finite() for value in values):
+                raise ValueError("fills cannot contain non-finite values")
+            if fill.quantity <= 0 or fill.price <= 0 or fill.fee < 0 or fill.slippage < 0:
+                raise ValueError("fills must have positive price/quantity and non-negative costs")
+
             notional = fill.price * fill.quantity
-            cash -= notional + fill.fee + fill.slippage
+            total_cost = notional + fill.fee + fill.slippage
+            if total_cost > cash:
+                raise ValueError("simulation cannot spend more cash than is available")
+
+            cash -= total_cost
             fees += fill.fee
             slippage += fill.slippage
 
