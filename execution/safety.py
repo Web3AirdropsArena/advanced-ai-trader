@@ -27,7 +27,7 @@ class ExecutionPreflight:
         if order.input_mint == order.output_mint:
             errors.append("input and output assets must differ")
 
-        if order.notional > Decimal("22") and self.settings.app_env != "production":
+        if order.notional > Decimal(22) and self.settings.app_env != "production":
             errors.append("development/test environments cannot stage oversized notional")
 
         return errors
