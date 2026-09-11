@@ -1,5 +1,8 @@
 from decimal import Decimal
 
+import pytest
+from pydantic import ValidationError
+
 from core.config import Settings
 from execution.contracts import ExecutionMode, OrderIntent, OrderSide
 from execution.safety import ExecutionPreflight
@@ -27,9 +30,9 @@ def test_tiny_live_is_blocked() -> None:
     assert any("tiny-live" in error for error in errors)
 
 
-def test_excessive_slippage_is_blocked() -> None:
-    errors = ExecutionPreflight(Settings()).validate(order(max_slippage_bps=501))
-    assert any("slippage" in error for error in errors)
+def test_excessive_slippage_is_rejected_by_order_contract() -> None:
+    with pytest.raises(ValidationError, match="less than or equal to 500"):
+        order(max_slippage_bps=501)
 
 
 def test_identical_assets_are_blocked() -> None:
