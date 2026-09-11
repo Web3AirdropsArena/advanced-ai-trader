@@ -49,12 +49,20 @@ class JupiterClient:
         except ValueError as exc:
             raise ValueError("Jupiter order returned invalid JSON") from exc
 
+        required_fields = ("outAmount", "router", "requestId")
+        missing_fields = [field for field in required_fields if field not in payload]
+        if missing_fields:
+            raise ValueError(
+                "Jupiter order is missing required response fields: "
+                + ", ".join(missing_fields)
+            )
+
         try:
             out_amount = int(payload["outAmount"])
             router = str(payload["router"])
             request_id = str(payload["requestId"])
         except (KeyError, TypeError, ValueError) as exc:
-            raise ValueError("Jupiter order is missing required response fields") from exc
+            raise ValueError("Jupiter order returned invalid required response fields") from exc
         if out_amount < 0 or not router or not request_id:
             raise ValueError("Jupiter order returned invalid response fields")
 
