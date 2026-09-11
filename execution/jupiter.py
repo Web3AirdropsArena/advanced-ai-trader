@@ -12,7 +12,7 @@ from execution.contracts import ExecutionQuote, OrderIntent, OrderSide
 
 
 class JupiterClient:
-    """Read-only Jupiter integration for research and paper execution.
+    """Read-only Jupiter Swap V2 integration for research and paper execution.
 
     This adapter deliberately does not sign or submit transactions. Live
     transaction submission belongs behind a separate credential-isolated
@@ -31,46 +31,56 @@ class JupiterClient:
     async def quote(self, intent: OrderIntent) -> ExecutionQuote:
         if intent.side != OrderSide.BUY:
             raise NotImplementedError("initial adapter supports quote construction for buys only")
+        if self.settings.jupiter_api_key is None:
+            raise RuntimeError("JUPITER_API_KEY is required for Jupiter Swap V2")
 
         params = {
             "inputMint": intent.input_mint,
             "outputMint": intent.output_mint,
             "amount": str(intent.input_amount_atomic),
-            "slippageBps": str(intent.max_slippage_bps),
         }
         response = await self._get_with_retry(
-            f"{self.settings.jupiter_api_base}/swap/v1/quote", params=params
+            f"{self.settings.jupiter_api_base}/order",
+            params=params,
+            headers={"x-api-key": self.settings.jupiter_api_key.get_secret_value()},
         )
-        payload: dict[str, Any] = response.json()
+        try:
+            payload: dict[str, Any] = response.json()
+        except ValueError as exc:
+            raise ValueError("Jupiter order returned invalid JSON") from exc
 
         try:
             out_amount = int(payload["outAmount"])
+            router = str(payload["router"])
+            request_id = str(payload["requestId"])
         except (KeyError, TypeError, ValueError) as exc:
-            raise ValueError("Jupiter quote is missing a valid outAmount") from exc
-        if out_amount < 0:
-            raise ValueError("Jupiter quote returned a negative outAmount")
+            raise ValueError("Jupiter order is missing required response fields") from exc
+        if out_amount < 0 or not router or not request_id:
+            raise ValueError("Jupiter order returned invalid response fields")
 
-        try:
-            price_impact = Decimal(str(payload.get("priceImpactPct", "0")))
-        except (ArithmeticError, ValueError) as exc:
-            raise ValueError("Jupiter quote returned an invalid price impact") from exc
-        if price_impact < 0:
-            raise ValueError("Jupiter quote returned a negative price impact")
-
+        # Swap V2 does not expose the legacy priceImpactPct field used by the
+        # old endpoint. Keep the value explicitly unknown rather than inventing 0.
+        route_summary = f"router={router};request_id={request_id}"
         return ExecutionQuote(
             venue="jupiter",
             input_amount_atomic=int(intent.input_amount_atomic),
             expected_output_atomic=out_amount,
-            price_impact=price_impact,
-            route_summary=str(payload.get("routePlan", [])),
+            price_impact=None,
+            route_summary=route_summary,
             raw_fingerprint=hashlib.sha256(response.content).hexdigest(),
         )
 
-    async def _get_with_retry(self, url: str, *, params: dict[str, str]) -> httpx.Response:
+    async def _get_with_retry(
+        self,
+        url: str,
+        *,
+        params: dict[str, str],
+        headers: dict[str, str],
+    ) -> httpx.Response:
         """GET with bounded retry for transient transport, throttling and server failures."""
         for attempt in range(self._MAX_ATTEMPTS):
             try:
-                response = await self._client.get(url, params=params)
+                response = await self._client.get(url, params=params, headers=headers)
             except (httpx.TimeoutException, httpx.NetworkError, httpx.RemoteProtocolError):
                 if attempt == self._MAX_ATTEMPTS - 1:
                     raise
