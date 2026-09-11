@@ -1,0 +1,29 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+.vscode/
+.idea/
+
+# Local runtime state
+runtime/
+data/cache/
+data/raw/
+data/derived/
+models/checkpoints/
+
+# Secrets and key material
+*.pem
+*.key
+*.seed
+*.secret
+secrets/
+wallets/
