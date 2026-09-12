@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Sequence
 
 import numpy as np
+from numpy.typing import NDArray
 
 
 @dataclass(frozen=True)
@@ -31,8 +32,8 @@ class PCAReducer3D:
             raise ValueError("The latent visualization requires exactly 3 components.")
         self.n_components = n_components
 
-    def fit_transform(self, representations: np.ndarray) -> np.ndarray:
-        matrix = np.asarray(representations, dtype=np.float64)
+    def fit_transform(self, representations: NDArray[np.float64]) -> NDArray[np.float64]:
+        matrix: NDArray[np.float64] = np.asarray(representations, dtype=np.float64)
         if matrix.ndim != 2:
             raise ValueError("Representations must be a 2D matrix.")
         if matrix.shape[0] < 3:
@@ -40,13 +41,13 @@ class PCAReducer3D:
         if not np.isfinite(matrix).all():
             raise ValueError("Representations contain non-finite values.")
 
-        centered = matrix - matrix.mean(axis=0, keepdims=True)
-        scale = centered.std(axis=0, keepdims=True)
+        centered: NDArray[np.float64] = matrix - matrix.mean(axis=0, keepdims=True)
+        scale: NDArray[np.float64] = centered.std(axis=0, keepdims=True)
         scale[scale < 1e-12] = 1.0
-        normalized = centered / scale
+        normalized: NDArray[np.float64] = centered / scale
         _, _, vh = np.linalg.svd(normalized, full_matrices=False)
-        components = vh[: self.n_components].T
-        return normalized @ components
+        components: NDArray[np.float64] = vh[: self.n_components].T
+        return np.asarray(normalized @ components, dtype=np.float64)
 
 
 class LatentSnapshotStore:
@@ -58,14 +59,14 @@ class LatentSnapshotStore:
 
     def write_snapshot(
         self,
-        representations: np.ndarray,
+        representations: NDArray[np.float64],
         epoch: int,
         predicted_class: Sequence[str],
         true_label: Sequence[str],
         pnl_or_return: Sequence[float],
         max_samples: int = 1500,
     ) -> int:
-        matrix = np.asarray(representations, dtype=np.float64)
+        matrix: NDArray[np.float64] = np.asarray(representations, dtype=np.float64)
         count = matrix.shape[0]
         if matrix.ndim != 2 or count == 0:
             raise ValueError("A non-empty 2D representation matrix is required.")
@@ -77,7 +78,7 @@ class LatentSnapshotStore:
         if count > limit:
             indices = indices[-limit:]
         sampled = matrix[indices]
-        coordinates = PCAReducer3D().fit_transform(sampled)
+        coordinates: NDArray[np.float64] = PCAReducer3D().fit_transform(sampled)
         timestamp = datetime.now(UTC).isoformat()
         points = [
             LatentPoint(
