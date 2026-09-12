@@ -6,6 +6,7 @@ from typing import AsyncIterator
 from fastapi import FastAPI
 
 from core.config import Settings
+from research.latent_api import load_latent_points
 from research.latent_supervisor import supervisor
 
 
@@ -49,3 +50,10 @@ def system() -> dict[str, str]:
 def research_status() -> dict[str, object]:
     """Return live training and latent-space telemetry."""
     return supervisor.status()
+
+
+@app.get("/api/v1/research/latent")
+def research_latent() -> dict[str, object]:
+    """Return recent 3D latent points for the command-center graph."""
+    points = load_latent_points()
+    return {"dimensions": 3, "count": len(points), "points": points}
