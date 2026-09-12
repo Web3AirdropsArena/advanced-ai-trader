@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 
@@ -32,12 +32,11 @@ class Provenance:
         if received_at.tzinfo is None or received_at.utcoffset() is None:
             raise ValueError("received_at must be timezone-aware")
 
-        observed_utc = observed_at.astimezone(timezone.utc)
-        received_utc = received_at.astimezone(timezone.utc)
+        observed_utc = observed_at.astimezone(UTC)
+        received_utc = received_at.astimezone(UTC)
         if received_utc < observed_utc:
             raise ValueError("received_at cannot precede observed_at")
 
-        # Reject NaN/Infinity instead of silently hashing non-standard JSON.
         try:
             canonical = json.dumps(
                 payload,
@@ -67,5 +66,5 @@ def _canonical_default(value: Any) -> str:
     if isinstance(value, datetime):
         if value.tzinfo is None or value.utcoffset() is None:
             raise TypeError("datetime payload values must be timezone-aware")
-        return value.astimezone(timezone.utc).isoformat()
+        return value.astimezone(UTC).isoformat()
     raise TypeError(f"unsupported payload type: {type(value).__name__}")
