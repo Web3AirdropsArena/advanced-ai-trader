@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import threading
 import time
 from datetime import UTC, datetime
@@ -14,14 +15,19 @@ from research.latent import LatentSnapshotStore
 
 
 class LatentResearchSupervisor:
-    """Background benchmark training with evolving penultimate-layer telemetry."""
+    """Background benchmark training with bounded command-center telemetry."""
 
     def __init__(self, state_path: str | Path = "data/runtime/research_status.json") -> None:
         self.state_path = Path(state_path)
+        self.history_path = self.state_path.with_name("research_history.json")
+        self.events_path = self.state_path.with_name("research_events.jsonl")
         self.latent_store = LatentSnapshotStore()
         self._lock = threading.Lock()
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
+        self._history: list[dict[str, Any]] = []
+        self._events: list[dict[str, Any]] = []
+        self._load_persistent_state()
         self._state: dict[str, Any] = {
             "status": "stopped", "stage": "idle", "experiment_id": None,
             "model_id": None, "progress": 0.0, "epoch": 0, "epochs": 0,
@@ -38,8 +44,11 @@ class LatentResearchSupervisor:
             if self._thread and self._thread.is_alive():
                 return
             self._stop.clear()
-            self._thread = threading.Thread(target=self._run, name="latent-research-supervisor", daemon=True)
+            self._thread = threading.Thread(
+                target=self._run, name="latent-research-supervisor", daemon=True
+            )
             self._thread.start()
+        self._event("research_started", "Research supervisor started.")
 
     def stop(self) -> None:
         self._stop.set()
@@ -51,10 +60,19 @@ class LatentResearchSupervisor:
             self._state["stage"] = "idle"
             self._state["message"] = "Research supervisor stopped."
             self._persist()
+        self._event("research_stopped", "Research supervisor stopped by operator.")
 
     def status(self) -> dict[str, Any]:
         with self._lock:
             return dict(self._state)
+
+    def history(self, limit: int = 20) -> list[dict[str, Any]]:
+        with self._lock:
+            return list(reversed(self._history[-max(1, min(limit, 100)) :]))
+
+    def events(self, limit: int = 40) -> list[dict[str, Any]]:
+        with self._lock:
+            return list(reversed(self._events[-max(1, min(limit, 100)) :]))
 
     def _set(self, **updates: Any) -> None:
         with self._lock:
@@ -67,6 +85,56 @@ class LatentResearchSupervisor:
         temporary = self.state_path.with_suffix(".tmp")
         temporary.write_text(json.dumps(self._state, indent=2, sort_keys=True), encoding="utf-8")
         temporary.replace(self.state_path)
+
+    def _load_persistent_state(self) -> None:
+        try:
+            data = json.loads(self.history_path.read_text(encoding="utf-8"))
+            if isinstance(data, list):
+                self._history = [item for item in data if isinstance(item, dict)][-100:]
+        except (OSError, ValueError):
+            self._history = []
+        try:
+            lines = self.events_path.read_text(encoding="utf-8").splitlines()
+            self._events = [json.loads(line) for line in lines[-100:] if line.strip()]
+            self._events = [item for item in self._events if isinstance(item, dict)]
+        except (OSError, ValueError):
+            self._events = []
+
+    def _event(self, event_type: str, message: str, **details: Any) -> None:
+        event = {
+            "timestamp": datetime.now(UTC).isoformat(),
+            "type": event_type,
+            "message": message,
+            **details,
+        }
+        with self._lock:
+            self._events.append(event)
+            self._events = self._events[-100:]
+            self.events_path.parent.mkdir(parents=True, exist_ok=True)
+            with self.events_path.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(event, sort_keys=True) + "\n")
+
+    def _record_experiment(self, experiment_id: str, loss: float, started: str) -> None:
+        record = {
+            "experiment_id": experiment_id,
+            "model_id": "mlp-benchmark",
+            "dataset": "deterministic_benchmark_v1",
+            "market_training": False,
+            "status": "completed",
+            "started_at": started,
+            "finished_at": datetime.now(UTC).isoformat(),
+            "epochs": 20,
+            "validation_loss": None if not np.isfinite(loss) else loss,
+            "latent_snapshot": "data/runtime/latent_points.jsonl",
+        }
+        with self._lock:
+            self._history.append(record)
+            self._history = self._history[-100:]
+            self.history_path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = self.history_path.with_suffix(".tmp")
+            temporary.write_text(json.dumps(self._history, indent=2, sort_keys=True), encoding="utf-8")
+            temporary.replace(self.history_path)
+        self._event("experiment_completed", "Benchmark experiment completed.", experiment_id=experiment_id)
 
     def _run(self) -> None:
         while not self._stop.is_set():
@@ -81,12 +149,16 @@ class LatentResearchSupervisor:
                 market_training=False, latent_points=0,
                 message="Training benchmark model and sampling its evolving penultimate representation.",
             )
+            self._event("experiment_started", "Started benchmark experiment.", experiment_id=experiment_id)
             loss = self._train_benchmark(experiment_id, epochs)
             if self._stop.is_set():
                 break
-            self._set(status="completed", stage="evaluation", progress=100.0,
-                      validation_loss=loss, finished_at=datetime.now(UTC).isoformat(),
-                      message="Benchmark training completed; waiting before next experiment.")
+            self._set(
+                status="completed", stage="evaluation", progress=100.0,
+                validation_loss=loss, finished_at=datetime.now(UTC).isoformat(),
+                message="Benchmark training completed; waiting before next experiment.",
+            )
+            self._record_experiment(experiment_id, loss, started)
             self._stop.wait(5)
 
     def _train_benchmark(self, experiment_id: str, epochs: int) -> float:
@@ -108,7 +180,7 @@ class LatentResearchSupervisor:
 
         for epoch in range(1, epochs + 1):
             if self._stop.is_set():
-                return float("nan")
+                return validation_loss
             hidden = np.tanh(train_x @ hidden_weights + hidden_bias)
             predictions = hidden @ output_weights + output_bias
             error = predictions - train_y
@@ -125,13 +197,17 @@ class LatentResearchSupervisor:
             eval_hidden = np.tanh(test_x @ hidden_weights + hidden_bias)
             eval_predictions = eval_hidden @ output_weights + output_bias
             validation_loss = float(np.mean((eval_predictions - test_y) ** 2))
-            self._set(progress=round(epoch * 100 / epochs, 2), epoch=epoch,
-                      samples_processed=epoch * len(train_x), validation_loss=validation_loss,
-                      stage="training")
+            self._set(
+                progress=round(epoch * 100 / epochs, 2), epoch=epoch,
+                samples_processed=epoch * len(train_x), validation_loss=validation_loss,
+                stage="training",
+            )
 
             if epoch % 2 == 0 or epoch == 1:
                 labels = np.where(test_y > 0.1, "BUY", np.where(test_y < -0.1, "SELL", "HOLD"))
-                predicted = np.where(eval_predictions > 0.1, "BUY", np.where(eval_predictions < -0.1, "SELL", "HOLD"))
+                predicted = np.where(
+                    eval_predictions > 0.1, "BUY", np.where(eval_predictions < -0.1, "SELL", "HOLD")
+                )
                 count = self.latent_store.write_snapshot(
                     eval_hidden, epoch, predicted, labels, eval_predictions, max_samples=1500
                 )
