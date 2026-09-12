@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import os
 import time
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
