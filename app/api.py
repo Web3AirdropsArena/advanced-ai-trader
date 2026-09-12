@@ -1,14 +1,20 @@
 from __future__ import annotations
 
+import os
+import time
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 
 from core.config import Settings
+from research.command_center import COMMAND_CENTER_HTML
 from research.latent_api import load_latent_points
 from research.latent_supervisor import supervisor
+
+_process_started = time.monotonic()
+_process_cpu_started = os.times()
 
 
 @asynccontextmanager
@@ -55,24 +61,79 @@ def research_status() -> dict[str, object]:
 
 @app.get("/api/v1/research/latent")
 def research_latent() -> dict[str, object]:
-    """Return recent 3D latent points for the command-center graph."""
+    """Return recent 3D latent points for the command center graph."""
     points = load_latent_points()
     return {"dimensions": 3, "count": len(points), "points": points}
 
 
+@app.get("/api/v1/research/history")
+def research_history() -> list[dict[str, object]]:
+    """Return bounded persisted benchmark experiment history."""
+    return supervisor.history()
+
+
+@app.get("/api/v1/research/events")
+def research_events() -> list[dict[str, object]]:
+    """Return bounded research event telemetry."""
+    return supervisor.events()
+
+
+@app.get("/api/v1/research/agents")
+def research_agents() -> list[dict[str, str]]:
+    """Describe the research-agent roles; these are not trade-authority processes."""
+    return [
+        {"name": "Researcher", "role": "experiment orchestration", "status": "ready"},
+        {"name": "Math Scientist", "role": "hypothesis / objective critique", "status": "ready"},
+        {"name": "Feature Scientist", "role": "feature quality / leakage review", "status": "ready"},
+        {"name": "Model Builder", "role": "candidate architecture lab", "status": "ready"},
+        {"name": "Adversarial Critic", "role": "stress and failure analysis", "status": "ready"},
+        {"name": "Evaluator", "role": "out-of-sample evidence", "status": "ready"},
+    ]
+
+
+@app.get("/api/v1/research/resources")
+def research_resources() -> dict[str, object]:
+    """Return lightweight local process/resource telemetry without new dependencies."""
+    rss_mb = None
+    try:
+        with open("/proc/self/status", encoding="utf-8") as handle:
+            for line in handle:
+                if line.startswith("VmRSS:"):
+                    rss_mb = round(float(line.split()[1]) / 1024, 2)
+                    break
+    except (OSError, ValueError):
+        pass
+    load_1m = None
+    try:
+        load_1m = round(os.getloadavg()[0], 2)
+    except OSError:
+        pass
+    elapsed = max(time.monotonic() - _process_started, 0.001)
+    cpu = os.times()
+    started_cpu = _process_cpu_started
+    cpu_seconds = round((cpu.user - started_cpu.user) + (cpu.system - started_cpu.system), 3)
+    return {
+        "rss_mb": rss_mb,
+        "load_1m": load_1m,
+        "cpu_seconds_since_start": cpu_seconds,
+        "process_uptime_seconds": round(elapsed, 1),
+        "worker": "running" if supervisor.status()["status"] in {"training", "completed"} else "stopped",
+    }
+
+
+@app.post("/api/v1/research/control")
+def research_control(action: str) -> dict[str, object]:
+    """Start or stop benchmark research only; this endpoint cannot enable live trading."""
+    if action == "start":
+        supervisor.start()
+    elif action == "stop":
+        supervisor.stop()
+    else:
+        raise HTTPException(status_code=400, detail="action must be start or stop")
+    return supervisor.status()
+
+
 @app.get("/research/latent", response_class=HTMLResponse)
 def latent_dashboard() -> str:
-    """Serve a lightweight live 3D latent-space command-center view."""
-    return """<!doctype html><html><head><meta charset='utf-8'><title>AI Latent Space</title>
-<script src='https://cdn.plot.ly/plotly-2.35.2.min.js'></script></head><body>
-<div id='graph' style='width:100vw;height:92vh'></div><pre id='status'>Connecting…</pre>
-<script>
-async function refresh(){
- const [s,l]=await Promise.all([fetch('/api/v1/research/status'),fetch('/api/v1/research/latent')]);
- const state=await s.json(), payload=await l.json();
- document.getElementById('status').textContent=`${state.status} | ${state.stage} | experiment=${state.experiment_id} | epoch=${state.epoch}/${state.epochs} | progress=${state.progress}% | latent points=${payload.count} | heartbeat=${state.heartbeat_at}`;
- const p=payload.points;
- Plotly.react('graph',[{x:p.map(v=>v.x),y:p.map(v=>v.y),z:p.map(v=>v.z),mode:'markers',type:'scatter3d',text:p.map(v=>`epoch=${v.epoch}<br>pred=${v.predicted_class}<br>true=${v.true_label}<br>return=${v.pnl_or_return}`),hoverinfo:'text',marker:{size:4}}],{title:'Advanced AI Trader — live 3D latent representation',scene:{xaxis_title:'PC1',yaxis_title:'PC2',zaxis_title:'PC3'}} ,{responsive:true});
-}
-refresh(); setInterval(refresh,2000);
-</script></body></html>"""
+    """Serve the research command center; all visual telemetry is read-only."""
+    return COMMAND_CENTER_HTML
