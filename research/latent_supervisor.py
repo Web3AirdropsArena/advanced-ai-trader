@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import threading
 import time
 from datetime import UTC, datetime
@@ -209,7 +208,12 @@ class LatentResearchSupervisor:
                     eval_predictions > 0.1, "BUY", np.where(eval_predictions < -0.1, "SELL", "HOLD")
                 )
                 count = self.latent_store.write_snapshot(
-                    eval_hidden, epoch, predicted, labels, eval_predictions, max_samples=1500
+                    eval_hidden,
+                    epoch,
+                    [str(value) for value in predicted.tolist()],
+                    [str(value) for value in labels.tolist()],
+                    [float(value) for value in eval_predictions.tolist()],
+                    max_samples=1500,
                 )
                 self._set(stage="latent_evaluation", latent_points=count)
             time.sleep(0.15)
