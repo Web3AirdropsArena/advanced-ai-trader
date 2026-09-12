@@ -525,7 +525,7 @@ The Jupiter key is a service credential, not a wallet signing key. Keep it local
 
 ```bash
 sudo apt update
-sudo apt install -y git python3.11 python3.11-venv python3-pip
+sudo apt install -y git python3 python3-venv python3-pip
 ```
 
 ### 2. Clone the repository
