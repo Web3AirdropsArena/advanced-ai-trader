@@ -13,6 +13,7 @@ Autonomous research and execution platform for spot crypto trading, designed aro
 - **Venue-aware, venue-portable.** Solana/Jupiter is the first execution environment while core intelligence remains portable.
 - **Evidence over narratives.** Every promoted artifact needs lineage, validation, and rollback metadata.
 - **Small-capital aware.** Fees, slippage, liquidity, and minimum executable size matter from the first simulation.
+- **Stable accounting.** USDC is the default portfolio accounting unit; SOL/WSOL remains a supported trading base asset.
 
 ## Architecture
 
@@ -74,6 +75,20 @@ advanced-ai-trader
 ```
 
 Then open `http://127.0.0.1:8000/docs`.
+
+### Environment configuration
+
+The example environment configures the Jupiter Developer Platform key, a public wallet address for telemetry, and the canonical Solana base mints:
+
+```dotenv
+JUPITER_API_KEY="your_jup_developer_portal_key"
+TRADING_WALLET_PUBLIC_KEY="your_solana_public_address"
+BASE_ACCOUNTING_MINT="EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v" # USDC
+BASE_STABLE_MINT="EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v" # USDC
+SOL_MINT="So11111111111111111111111111111111111111112" # WSOL
+```
+
+USDC is the default accounting currency because it provides a stable unit for portfolio value, PnL, drawdown, and risk limits. SOL can still be used as a trading base asset without making SOL/USD price movement appear as trading performance. Replace placeholder credentials locally; never commit real API keys or private signing material.
 
 See [`docs/RUNBOOK.md`](docs/RUNBOOK.md) for the complete laptop/Ollama setup and the required research-to-live deployment ladder.
 
