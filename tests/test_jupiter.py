@@ -40,7 +40,7 @@ async def test_quote_retries_transient_server_failure() -> None:
             OrderIntent(
                 asset_id="SOL/USDC",
                 input_mint="So11111111111111111111111111111111111111112",
-                output_mint="EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                output_mint="EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGkZwyTDt1v",
                 side=OrderSide.BUY,
                 input_amount_atomic=1_000_000,
                 notional=Decimal(1),
@@ -79,7 +79,7 @@ async def test_quote_rejects_malformed_response() -> None:
                 OrderIntent(
                     asset_id="SOL/USDC",
                     input_mint="So11111111111111111111111111111111111111112",
-                    output_mint="EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                    output_mint="EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGkZwyTDt1v",
                     side=OrderSide.BUY,
                     input_amount_atomic=1_000_000,
                     notional=Decimal(1),
@@ -95,14 +95,18 @@ async def test_quote_rejects_malformed_response() -> None:
 
 @pytest.mark.asyncio
 async def test_quote_requires_api_key() -> None:
-    client = JupiterClient(Settings(), httpx.AsyncClient(transport=httpx.MockTransport(lambda r: None)))
+    # Explicitly override .env so this test remains deterministic on developer machines.
+    client = JupiterClient(
+        Settings(jupiter_api_key=None),
+        httpx.AsyncClient(transport=httpx.MockTransport(lambda r: None)),
+    )
     try:
         with pytest.raises(RuntimeError, match="JUPITER_API_KEY"):
             await client.quote(
                 OrderIntent(
                     asset_id="SOL/USDC",
                     input_mint="So11111111111111111111111111111111111111112",
-                    output_mint="EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+                    output_mint="EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGkZwyTDt1v",
                     side=OrderSide.BUY,
                     input_amount_atomic=1_000_000,
                     notional=Decimal(1),
