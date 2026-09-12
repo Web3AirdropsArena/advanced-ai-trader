@@ -1,10 +1,26 @@
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
+from typing import AsyncIterator
+
 from fastapi import FastAPI
 
 from core.config import Settings
+from research.supervisor import supervisor
 
-app = FastAPI(title="Advanced AI Trader", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    settings = Settings()
+    if settings.trading_mode == "research":
+        supervisor.start()
+    try:
+        yield
+    finally:
+        supervisor.stop()
+
+
+app = FastAPI(title="Advanced AI Trader", version="0.1.0", lifespan=lifespan)
 
 
 @app.get("/health")
@@ -27,3 +43,9 @@ def system() -> dict[str, str]:
         "guardian": "enabled",
         "live_execution": "disabled_until_explicit_enablement",
     }
+
+
+@app.get("/api/v1/research/status")
+def research_status() -> dict[str, object]:
+    """Return live training telemetry from the research supervisor."""
+    return supervisor.status()
