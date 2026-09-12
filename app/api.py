@@ -6,7 +6,7 @@ from typing import AsyncIterator
 from fastapi import FastAPI
 
 from core.config import Settings
-from research.supervisor import supervisor
+from research.latent_supervisor import supervisor
 
 
 @asynccontextmanager
@@ -47,5 +47,5 @@ def system() -> dict[str, str]:
 
 @app.get("/api/v1/research/status")
 def research_status() -> dict[str, object]:
-    """Return live training telemetry from the research supervisor."""
+    """Return live training and latent-space telemetry."""
     return supervisor.status()
