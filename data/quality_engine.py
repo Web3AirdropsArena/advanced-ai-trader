@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from math import isfinite
 
 
@@ -42,8 +42,8 @@ class QualityEngine:
 
         # Normalize offsets before comparing so DST/offset differences cannot
         # silently turn a valid observation into a negative or stale age.
-        observed_utc = observed_at.astimezone(timezone.utc)
-        received_utc = received_at.astimezone(timezone.utc)
+        observed_utc = observed_at.astimezone(UTC)
+        received_utc = received_at.astimezone(UTC)
         score = source_reliability
 
         if not values:
