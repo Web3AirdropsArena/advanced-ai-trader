@@ -539,7 +539,7 @@ git checkout foundation
 ### 3. Create the Python environment
 
 ```bash
-python3.11 -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip setuptools
 pip install -e '.[dev]'
