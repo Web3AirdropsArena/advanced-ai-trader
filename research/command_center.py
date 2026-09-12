@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-
 COMMAND_CENTER_HTML = r"""<!doctype html>
 <html lang="en">
 <head>
