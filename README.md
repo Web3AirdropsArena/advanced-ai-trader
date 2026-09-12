@@ -533,7 +533,6 @@ sudo apt install -y git python3 python3-venv python3-pip
 ```bash
 git clone https://github.com/Web3AirdropsArena/advenced-ai-trader.git
 cd advenced-ai-trader
-git checkout foundation
 ```
 
 ### 3. Create the Python environment
