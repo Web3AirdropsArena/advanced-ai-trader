@@ -5,6 +5,10 @@ from pydantic import Field, SecretStr, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+SOL_MINT = "So11111111111111111111111111111111111111112"
+
+
 class Settings(BaseSettings):
     """Validated runtime settings.
 
@@ -23,6 +27,13 @@ class Settings(BaseSettings):
     jupiter_api_key: SecretStr | None = None
     trading_wallet_public_key: str | None = None
 
+    # USDC is the canonical portfolio accounting unit. SOL remains a supported
+    # base asset for routing and trading without making SOL price changes look
+    # like portfolio performance.
+    base_accounting_mint: str = USDC_MINT
+    base_stable_mint: str = USDC_MINT
+    sol_mint: str = SOL_MINT
+
     max_position_fraction: Decimal = Field(default=Decimal("0.10"), gt=0, le=Decimal(1))
     max_portfolio_drawdown: Decimal = Field(default=Decimal("0.15"), gt=0, le=Decimal(1))
     max_daily_loss_fraction: Decimal = Field(default=Decimal("0.03"), gt=0, le=Decimal(1))
@@ -34,6 +45,13 @@ class Settings(BaseSettings):
         if not value.startswith("https://"):
             raise ValueError("network endpoints must use HTTPS")
         return value.rstrip("/")
+
+    @field_validator("base_accounting_mint", "base_stable_mint", "sol_mint", "trading_wallet_public_key")
+    @classmethod
+    def require_non_empty_addresses(cls, value: str | None) -> str | None:
+        if value is not None and not value.strip():
+            raise ValueError("Solana addresses must not be empty")
+        return value.strip() if value is not None else None
 
     @field_validator("min_cash_reserve_fraction")
     @classmethod
