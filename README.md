@@ -107,8 +107,6 @@ research
 
 ## Architecture
 
-GitHub natively renders Mermaid diagrams, so the README uses Mermaid rather than depending on an external animation/GIF host. This keeps the documentation portable and makes the architecture inspectable directly on GitHub.
-
 ```mermaid
 graph TD
     A[On-chain / market / external data] --> B[Data ingestion]
