@@ -6,10 +6,8 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse
 
 from core.config import Settings
-from research.command_center import COMMAND_CENTER_HTML
 from research.latent_api import load_latent_points
 from research.latent_supervisor import supervisor
 
@@ -50,37 +48,33 @@ def system() -> dict[str, str]:
         "trading_mode": settings.trading_mode,
         "guardian": "enabled",
         "live_execution": "disabled_until_explicit_enablement",
+        "web_dashboard": "disabled_during_research",
     }
 
 
 @app.get("/api/v1/research/status")
 def research_status() -> dict[str, object]:
-    """Return live training and latent-space telemetry."""
     return supervisor.status()
 
 
 @app.get("/api/v1/research/latent")
 def research_latent() -> dict[str, object]:
-    """Return recent 3D latent points for the command center graph."""
     points = load_latent_points()
     return {"dimensions": 3, "count": len(points), "points": points}
 
 
 @app.get("/api/v1/research/history")
 def research_history() -> list[dict[str, object]]:
-    """Return bounded persisted benchmark experiment history."""
     return supervisor.history()
 
 
 @app.get("/api/v1/research/events")
 def research_events() -> list[dict[str, object]]:
-    """Return bounded research event telemetry."""
     return supervisor.events()
 
 
 @app.get("/api/v1/research/agents")
 def research_agents() -> list[dict[str, str]]:
-    """Describe the research-agent roles; these are not trade-authority processes."""
     return [
         {"name": "Researcher", "role": "experiment orchestration", "status": "ready"},
         {"name": "Math Scientist", "role": "hypothesis / objective critique", "status": "ready"},
@@ -93,7 +87,6 @@ def research_agents() -> list[dict[str, str]]:
 
 @app.get("/api/v1/research/resources")
 def research_resources() -> dict[str, object]:
-    """Return lightweight local process/resource telemetry without new dependencies."""
     rss_mb = None
     try:
         with open("/proc/self/status", encoding="utf-8") as handle:
@@ -123,7 +116,6 @@ def research_resources() -> dict[str, object]:
 
 @app.post("/api/v1/research/control")
 def research_control(action: str) -> dict[str, object]:
-    """Start or stop benchmark research only; this endpoint cannot enable live trading."""
     if action == "start":
         supervisor.start()
     elif action == "stop":
@@ -131,9 +123,3 @@ def research_control(action: str) -> dict[str, object]:
     else:
         raise HTTPException(status_code=400, detail="action must be start or stop")
     return supervisor.status()
-
-
-@app.get("/research/latent", response_class=HTMLResponse)
-def latent_dashboard() -> str:
-    """Serve the research command center; all visual telemetry is read-only."""
-    return COMMAND_CENTER_HTML
