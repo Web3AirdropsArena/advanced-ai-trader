@@ -14,7 +14,7 @@ from research.latent import LatentSnapshotStore
 
 
 class LatentResearchSupervisor:
-    """Background benchmark training with bounded command-center telemetry."""
+    """Background benchmark training with bounded terminal/API telemetry."""
 
     def __init__(self, state_path: str | Path = "data/runtime/research_status.json") -> None:
         self.state_path = Path(state_path)
@@ -28,14 +28,15 @@ class LatentResearchSupervisor:
         self._events: list[dict[str, Any]] = []
         self._load_persistent_state()
         self._state: dict[str, Any] = {
-            "status": "stopped", "stage": "idle", "experiment_id": None,
+            "status": "stopped", "stage": "stage_1_research", "experiment_id": None,
             "model_id": None, "progress": 0.0, "epoch": 0, "epochs": 0,
             "evaluation_interval": 2, "samples_processed": 0, "validation_loss": None,
             "heartbeat_at": None, "started_at": None, "finished_at": None,
             "dataset": "deterministic_benchmark_v1", "market_training": False,
             "latent_dimensions": 3, "latent_points": 0,
             "latent_snapshot": "data/runtime/latent_points.jsonl",
-            "message": "Research supervisor has not started.",
+            "stage_one_complete": False, "next_stage_ready": False,
+            "message": "Research stage has not started.",
         }
 
     def start(self) -> None:
@@ -56,10 +57,26 @@ class LatentResearchSupervisor:
             thread.join(timeout=2)
         with self._lock:
             self._state["status"] = "stopped"
-            self._state["stage"] = "idle"
+            if not self._state["stage_one_complete"]:
+                self._state["stage"] = "stage_1_research"
             self._state["message"] = "Research supervisor stopped."
             self._persist()
         self._event("research_stopped", "Research supervisor stopped by operator.")
+
+    def mark_stage_one_complete(self, evidence: str) -> None:
+        """Publish the Stage 1 -> Stage 2 handoff only after validation."""
+        if not evidence.strip():
+            raise ValueError("stage-one completion requires validation evidence")
+        with self._lock:
+            self._state["stage_one_complete"] = True
+            self._state["next_stage_ready"] = True
+            self._state["stage"] = "stage_1_complete"
+            self._state["status"] = "completed"
+            self._state["finished_at"] = datetime.now(UTC).isoformat()
+            self._state["message"] = "STAGE 1 COMPLETE — validated research is ready for Stage 2."
+            self._state["stage_one_evidence"] = evidence
+            self._persist()
+        self._event("stage_one_completed", "STAGE 1 COMPLETE — Stage 2 handoff is ready.", evidence=evidence)
 
     def status(self) -> dict[str, Any]:
         with self._lock:
@@ -100,12 +117,7 @@ class LatentResearchSupervisor:
             self._events = []
 
     def _event(self, event_type: str, message: str, **details: Any) -> None:
-        event = {
-            "timestamp": datetime.now(UTC).isoformat(),
-            "type": event_type,
-            "message": message,
-            **details,
-        }
+        event = {"timestamp": datetime.now(UTC).isoformat(), "type": event_type, "message": message, **details}
         with self._lock:
             self._events.append(event)
             self._events = self._events[-100:]
@@ -115,14 +127,10 @@ class LatentResearchSupervisor:
 
     def _record_experiment(self, experiment_id: str, loss: float, started: str) -> None:
         record = {
-            "experiment_id": experiment_id,
-            "model_id": "mlp-benchmark",
-            "dataset": "deterministic_benchmark_v1",
-            "market_training": False,
-            "status": "completed",
-            "started_at": started,
-            "finished_at": datetime.now(UTC).isoformat(),
-            "epochs": 20,
+            "experiment_id": experiment_id, "model_id": "mlp-benchmark",
+            "dataset": "deterministic_benchmark_v1", "market_training": False,
+            "status": "completed", "started_at": started,
+            "finished_at": datetime.now(UTC).isoformat(), "epochs": 20,
             "validation_loss": None if not np.isfinite(loss) else loss,
             "latent_snapshot": "data/runtime/latent_points.jsonl",
         }
@@ -136,12 +144,12 @@ class LatentResearchSupervisor:
         self._event("experiment_completed", "Benchmark experiment completed.", experiment_id=experiment_id)
 
     def _run(self) -> None:
-        while not self._stop.is_set():
+        while not self._stop.is_set() and not self._state["stage_one_complete"]:
             experiment_id = self._experiment_id()
             started = datetime.now(UTC).isoformat()
             epochs = 20
             self._set(
-                status="training", stage="training", experiment_id=experiment_id,
+                status="training", stage="stage_1_research", experiment_id=experiment_id,
                 model_id="mlp-benchmark", progress=0.0, epoch=0, epochs=epochs,
                 evaluation_interval=2, samples_processed=0, validation_loss=None,
                 started_at=started, finished_at=None, dataset="deterministic_benchmark_v1",
@@ -153,9 +161,9 @@ class LatentResearchSupervisor:
             if self._stop.is_set():
                 break
             self._set(
-                status="completed", stage="evaluation", progress=100.0,
+                status="completed", stage="stage_1_research_evaluation", progress=100.0,
                 validation_loss=loss, finished_at=datetime.now(UTC).isoformat(),
-                message="Benchmark training completed; waiting before next experiment.",
+                message="Experiment completed; Stage 1 continues until validation criteria are satisfied.",
             )
             self._record_experiment(experiment_id, loss, started)
             self._stop.wait(5)
@@ -176,7 +184,6 @@ class LatentResearchSupervisor:
         output_bias = 0.0
         learning_rate = 0.03
         validation_loss = float("inf")
-
         for epoch in range(1, epochs + 1):
             if self._stop.is_set():
                 return validation_loss
@@ -192,30 +199,23 @@ class LatentResearchSupervisor:
             output_bias -= learning_rate * grad_output_bias
             hidden_weights -= learning_rate * grad_hidden_weights
             hidden_bias -= learning_rate * grad_hidden_bias
-
             eval_hidden = np.tanh(test_x @ hidden_weights + hidden_bias)
             eval_predictions = eval_hidden @ output_weights + output_bias
             validation_loss = float(np.mean((eval_predictions - test_y) ** 2))
             self._set(
                 progress=round(epoch * 100 / epochs, 2), epoch=epoch,
                 samples_processed=epoch * len(train_x), validation_loss=validation_loss,
-                stage="training",
+                stage="stage_1_research_training",
             )
-
             if epoch % 2 == 0 or epoch == 1:
                 labels = np.where(test_y > 0.1, "BUY", np.where(test_y < -0.1, "SELL", "HOLD"))
-                predicted = np.where(
-                    eval_predictions > 0.1, "BUY", np.where(eval_predictions < -0.1, "SELL", "HOLD")
-                )
+                predicted = np.where(eval_predictions > 0.1, "BUY", np.where(eval_predictions < -0.1, "SELL", "HOLD"))
                 count = self.latent_store.write_snapshot(
-                    eval_hidden,
-                    epoch,
-                    [str(value) for value in predicted.tolist()],
+                    eval_hidden, epoch, [str(value) for value in predicted.tolist()],
                     [str(value) for value in labels.tolist()],
-                    [float(value) for value in eval_predictions.tolist()],
-                    max_samples=1500,
+                    [float(value) for value in eval_predictions.tolist()], max_samples=1500,
                 )
-                self._set(stage="latent_evaluation", latent_points=count)
+                self._set(stage="stage_1_latent_evaluation", latent_points=count)
             time.sleep(0.15)
         return validation_loss
 
