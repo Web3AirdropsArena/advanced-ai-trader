@@ -13,6 +13,7 @@ from typing import Any
 import numpy as np
 
 from research.latent import LatentSnapshotStore
+from research.power_guard import power_guard
 from research.terminal_ui import terminal_ui
 
 
@@ -42,6 +43,7 @@ class LatentResearchSupervisor:
             "latent_snapshot": "data/runtime/latent_points.jsonl",
             "stage_one_complete": False, "next_stage_ready": False,
             "training_speed": 0.0, "cpu_percent": 0.0, "memory_percent": 0.0,
+            "power_guard": power_guard.status(),
             "message": "Research stage has not started.",
         }
 
@@ -62,8 +64,10 @@ class LatentResearchSupervisor:
         thread = self._thread
         if thread and thread.is_alive():
             thread.join(timeout=2)
+        power_guard.release()
         with self._lock:
             self._state["status"] = "stopped"
+            self._state["power_guard"] = power_guard.status()
             if not self._state["stage_one_complete"]:
                 self._state["stage"] = "stage_1_research"
             self._state["message"] = "Research supervisor stopped."
@@ -80,14 +84,18 @@ class LatentResearchSupervisor:
             self._state["stage"] = "stage_1_complete"
             self._state["status"] = "completed"
             self._state["finished_at"] = datetime.now(UTC).isoformat()
-            self._state["message"] = "STAGE 1 COMPLETE — validated research is ready for Stage 2."
             self._state["stage_one_evidence"] = evidence
+            self._state["power_guard"] = power_guard.status()
+            self._state["message"] = "STAGE 1 COMPLETE — validated research is ready for Stage 2."
             self._persist()
+        power_guard.release()
         self._event("stage_one_completed", "STAGE 1 COMPLETE — Stage 2 handoff is ready.", evidence=evidence)
 
     def status(self) -> dict[str, Any]:
         with self._lock:
-            return dict(self._state)
+            state = dict(self._state)
+        state["power_guard"] = power_guard.status()
+        return state
 
     def history(self, limit: int = 20) -> list[dict[str, Any]]:
         with self._lock:
@@ -102,6 +110,7 @@ class LatentResearchSupervisor:
         updates.setdefault("training_speed", telemetry["training_speed"])
         updates.setdefault("cpu_percent", telemetry["cpu_percent"])
         updates.setdefault("memory_percent", telemetry["memory_percent"])
+        updates["power_guard"] = power_guard.status()
         with self._lock:
             self._state.update(updates)
             self._state["heartbeat_at"] = datetime.now(UTC).isoformat()
@@ -182,29 +191,43 @@ class LatentResearchSupervisor:
         self._event("experiment_completed", "Benchmark experiment completed.", experiment_id=experiment_id)
 
     def _run(self) -> None:
-        while not self._stop.is_set() and not self._state["stage_one_complete"]:
-            experiment_id = self._experiment_id()
-            started = datetime.now(UTC).isoformat()
-            epochs = 20
-            self._set(
-                status="training", stage="stage_1_research", experiment_id=experiment_id,
-                model_id="mlp-benchmark", progress=0.0, epoch=0, epochs=epochs,
-                evaluation_interval=2, samples_processed=0, validation_loss=None,
-                started_at=started, finished_at=None, dataset="deterministic_benchmark_v1",
-                market_training=False, latent_points=0,
-                message="Training benchmark model and sampling its evolving penultimate representation.",
-            )
-            self._event("experiment_started", "Started benchmark experiment.", experiment_id=experiment_id)
-            loss = self._train_benchmark(experiment_id, epochs)
-            if self._stop.is_set():
-                break
-            self._set(
-                status="completed", stage="stage_1_research_evaluation", progress=100.0,
-                validation_loss=loss, finished_at=datetime.now(UTC).isoformat(),
-                message="Experiment completed; Stage 1 continues until validation criteria are satisfied.",
-            )
-            self._record_experiment(experiment_id, loss, started)
-            self._stop.wait(5)
+        keep_awake = power_guard.acquire()
+        self._set(power_guard=power_guard.status())
+        self._event(
+            "power_guard",
+            "Idle/sleep prevention active for research session."
+            if keep_awake
+            else "Idle/sleep prevention unavailable; research continues without it.",
+            active=keep_awake,
+        )
+        try:
+            while not self._stop.is_set() and not self._state["stage_one_complete"]:
+                experiment_id = self._experiment_id()
+                started = datetime.now(UTC).isoformat()
+                epochs = 20
+                self._set(
+                    status="training", stage="stage_1_research", experiment_id=experiment_id,
+                    model_id="mlp-benchmark", progress=0.0, epoch=0, epochs=epochs,
+                    evaluation_interval=2, samples_processed=0, validation_loss=None,
+                    started_at=started, finished_at=None, dataset="deterministic_benchmark_v1",
+                    market_training=False, latent_points=0,
+                    message="Training benchmark model and sampling its evolving penultimate representation.",
+                )
+                self._event("experiment_started", "Started benchmark experiment.", experiment_id=experiment_id)
+                loss = self._train_benchmark(experiment_id, epochs)
+                if self._stop.is_set():
+                    break
+                self._set(
+                    status="completed", stage="stage_1_research_evaluation", progress=100.0,
+                    validation_loss=loss, finished_at=datetime.now(UTC).isoformat(),
+                    message="Experiment completed; Stage 1 continues until validation criteria are satisfied.",
+                )
+                self._record_experiment(experiment_id, loss, started)
+                self._stop.wait(5)
+        finally:
+            power_guard.release()
+            self._set(power_guard=power_guard.status())
+            self._event("power_guard_released", "Research session ended; normal power policy restored.")
 
     def _train_benchmark(self, experiment_id: str, epochs: int) -> float:
         seed = int(experiment_id[-8:], 16) % (2**32)
