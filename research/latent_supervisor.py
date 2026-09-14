@@ -11,6 +11,7 @@ from typing import Any
 import numpy as np
 
 from research.latent import LatentSnapshotStore
+from research.terminal_ui import terminal_ui
 
 
 class LatentResearchSupervisor:
@@ -48,6 +49,7 @@ class LatentResearchSupervisor:
                 target=self._run, name="latent-research-supervisor", daemon=True
             )
             self._thread.start()
+        terminal_ui.banner()
         self._event("research_started", "Research supervisor started.")
 
     def stop(self) -> None:
@@ -94,7 +96,9 @@ class LatentResearchSupervisor:
         with self._lock:
             self._state.update(updates)
             self._state["heartbeat_at"] = datetime.now(UTC).isoformat()
+            state = dict(self._state)
             self._persist()
+        terminal_ui.progress(state)
 
     def _persist(self) -> None:
         self.state_path.parent.mkdir(parents=True, exist_ok=True)
@@ -124,6 +128,7 @@ class LatentResearchSupervisor:
             self.events_path.parent.mkdir(parents=True, exist_ok=True)
             with self.events_path.open("a", encoding="utf-8") as handle:
                 handle.write(json.dumps(event, sort_keys=True) + "\n")
+        terminal_ui.event(event_type, message, **details)
 
     def _record_experiment(self, experiment_id: str, loss: float, started: str) -> None:
         record = {
@@ -207,6 +212,14 @@ class LatentResearchSupervisor:
                 samples_processed=epoch * len(train_x), validation_loss=validation_loss,
                 stage="stage_1_research_training",
             )
+            self._event(
+                "epoch_completed",
+                f"Epoch {epoch}/{epochs} completed.",
+                epoch=epoch,
+                progress=round(epoch * 100 / epochs, 2),
+                validation_loss=round(validation_loss, 6),
+                samples=epoch * len(train_x),
+            )
             if epoch % 2 == 0 or epoch == 1:
                 labels = np.where(test_y > 0.1, "BUY", np.where(test_y < -0.1, "SELL", "HOLD"))
                 predicted = np.where(eval_predictions > 0.1, "BUY", np.where(eval_predictions < -0.1, "SELL", "HOLD"))
@@ -216,6 +229,7 @@ class LatentResearchSupervisor:
                     [float(value) for value in eval_predictions.tolist()], max_samples=1500,
                 )
                 self._set(stage="stage_1_latent_evaluation", latent_points=count)
+                self._event("latent_snapshot", f"Captured {count} latent points from epoch {epoch}.", epoch=epoch, points=count)
             time.sleep(0.15)
         return validation_loss
 
