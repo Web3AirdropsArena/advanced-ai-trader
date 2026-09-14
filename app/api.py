@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import json
 import os
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
@@ -31,6 +34,30 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="Advanced AI Trader", version="0.1.0", lifespan=lifespan)
+
+
+def _research_started_at() -> str | None:
+    current = supervisor.status()
+    experiment_id = str(current.get("experiment_id") or "")
+    if not experiment_id:
+        return current.get("started_at") if isinstance(current.get("started_at"), str) else None
+    path = Path(str(supervisor.events_path))
+    try:
+        for line in reversed(path.read_text(encoding="utf-8").splitlines()):
+            if not line.strip():
+                continue
+            event = json.loads(line)
+            if (
+                isinstance(event, dict)
+                and event.get("type") == "research_started"
+                and str(event.get("experiment_id")) == experiment_id
+            ):
+                timestamp = event.get("timestamp")
+                return str(timestamp) if timestamp else None
+    except (OSError, ValueError, TypeError):
+        pass
+    value = current.get("started_at")
+    return str(value) if value else None
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -68,7 +95,9 @@ def system() -> dict[str, str]:
 
 @app.get("/api/v1/research/status")
 def research_status() -> dict[str, object]:
-    return supervisor.status()
+    state = supervisor.status()
+    state["research_started_at"] = _research_started_at()
+    return state
 
 
 @app.get("/api/v1/research/latent")
@@ -84,7 +113,19 @@ def research_history(limit: int = 20) -> list[dict[str, object]]:
 
 @app.get("/api/v1/research/events")
 def research_events(limit: int = 500) -> list[dict[str, object]]:
-    return supervisor.events(limit=limit)
+    safe_limit = max(1, min(limit, 5000))
+    path = Path(str(supervisor.events_path))
+    try:
+        events: list[dict[str, object]] = []
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            event = json.loads(line)
+            if isinstance(event, dict):
+                events.append(event)
+        return list(reversed(events[-safe_limit:]))
+    except (OSError, ValueError, TypeError):
+        return supervisor.events(limit=safe_limit)
 
 
 @app.get("/api/v1/research/agents")
