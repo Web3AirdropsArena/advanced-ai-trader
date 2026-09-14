@@ -5,7 +5,6 @@ import os
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -40,7 +39,8 @@ def _research_started_at() -> str | None:
     current = supervisor.status()
     experiment_id = str(current.get("experiment_id") or "")
     if not experiment_id:
-        return current.get("started_at") if isinstance(current.get("started_at"), str) else None
+        value = current.get("started_at")
+        return str(value) if value else None
     path = Path(str(supervisor.events_path))
     try:
         for line in reversed(path.read_text(encoding="utf-8").splitlines()):
