@@ -1,4 +1,4 @@
-from __future__ import annotations
+from __future__
 
 import hashlib
 import json
@@ -52,12 +52,24 @@ class LatentResearchSupervisor:
             if self._thread and self._thread.is_alive():
                 return
             self._stop.clear()
+            experiment_id = self._experiment_id()
+            now = datetime.now(UTC).isoformat()
+            self._state.update(
+                experiment_id=experiment_id,
+                model_id="mlp-benchmark",
+                status="starting",
+                stage="stage_1_research",
+                started_at=now,
+                finished_at=None,
+                heartbeat_at=now,
+                message="Research supervisor starting Stage 1 benchmark training.",
+            )
             self._thread = threading.Thread(
                 target=self._run, name="latent-research-supervisor", daemon=True
             )
             self._thread.start()
         terminal_ui.banner()
-        self._event("research_started", "Research supervisor started.")
+        self._event("research_started", "Research supervisor started.", experiment_id=experiment_id)
 
     def stop(self) -> None:
         self._stop.set()
@@ -202,7 +214,8 @@ class LatentResearchSupervisor:
         )
         try:
             while not self._stop.is_set() and not self._state["stage_one_complete"]:
-                experiment_id = self._experiment_id()
+                with self._lock:
+                    experiment_id = self._experiment_id()
                 started = datetime.now(UTC).isoformat()
                 epochs = 20
                 self._set(
