@@ -1,4 +1,4 @@
-from __future__
+from __future__ import annotations
 
 import hashlib
 import json
@@ -64,6 +64,7 @@ class LatentResearchSupervisor:
                 heartbeat_at=now,
                 message="Research supervisor starting Stage 1 benchmark training.",
             )
+            self._persist()
             self._thread = threading.Thread(
                 target=self._run, name="latent-research-supervisor", daemon=True
             )
@@ -215,7 +216,8 @@ class LatentResearchSupervisor:
         try:
             while not self._stop.is_set() and not self._state["stage_one_complete"]:
                 with self._lock:
-                    experiment_id = self._experiment_id()
+                    experiment_id = str(self._state["experiment_id"] or self._experiment_id())
+                    self._state["experiment_id"] = experiment_id
                 started = datetime.now(UTC).isoformat()
                 epochs = 20
                 self._set(
