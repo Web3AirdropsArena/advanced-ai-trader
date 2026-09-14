@@ -8,8 +8,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 
+from app.dashboard import DASHBOARD_HTML
 from core.config import Settings
-from research.dashboard import DASHBOARD_HTML
 from research.latent_api import load_latent_points
 from research.latent_supervisor import supervisor
 
