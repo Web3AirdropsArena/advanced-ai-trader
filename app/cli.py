@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 import time
 
 import uvicorn
@@ -9,29 +10,27 @@ from research.latent_supervisor import supervisor
 
 
 def _print_research_progress(interval: float) -> None:
-    """Run research locally and render compact progress in the terminal."""
+    """Run research locally and render progress in the terminal."""
     supervisor.start()
-    last_line = ""
     completion_announced = False
     try:
         while True:
             state = supervisor.status()
-            progress = float(state.get("progress", 0.0))
+            total = float(state.get("research_progress", 0.0))
+            phase = float(state.get("progress", 0.0))
             epoch = int(state.get("epoch", 0))
             epochs = int(state.get("epochs", 0))
             status = str(state.get("status", "unknown"))
-            stage = str(state.get("stage", "idle"))
+            stage = str(state.get("program_stage_name", "unknown"))
             experiment = str(state.get("experiment_id") or "-")
             loss = state.get("validation_loss")
             loss_text = "-" if loss is None else f"{float(loss):.6f}"
             line = (
-                f"\rResearch | stage={stage:<25} status={status:<10} "
-                f"progress={progress:6.2f}% epoch={epoch:>2}/{epochs:<2} "
-                f"val_loss={loss_text:<10} exp={experiment}"
+                f"\rResearch | total={total:6.2f}% phase={phase:6.2f}% "
+                f"stage={stage:<24} status={status:<10} "
+                f"epoch={epoch:>2}/{epochs:<2} val_loss={loss_text:<10} exp={experiment}"
             )
-            if line != last_line:
-                print(line, end="", flush=True)
-                last_line = line
+            print(line, end="", flush=True)
             if state.get("next_stage_ready") and not completion_announced:
                 print(
                     "\n\n"
@@ -46,6 +45,25 @@ def _print_research_progress(interval: float) -> None:
     except KeyboardInterrupt:
         print("\n\nResearch stopped by operator.")
         supervisor.stop()
+
+
+def _build_server_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("application", nargs="?", default="app.api:app")
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--reload", action="store_true")
+    return parser
+
+
+def compat_unicorn() -> None:
+    """Compatibility shim for the common `unicorn` typo; delegates to Uvicorn."""
+    parser = _build_server_parser()
+    args, unknown = parser.parse_known_args(sys.argv[1:])
+    if unknown:
+        parser.error(f"unsupported option(s): {' '.join(unknown)}")
+    print("Note: `unicorn` is a compatibility alias for `uvicorn` in this project.")
+    uvicorn.run(args.application, host=args.host, port=args.port, reload=args.reload)
 
 
 def main() -> None:
