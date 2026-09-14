@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import resource
 import threading
 import time
 from datetime import UTC, datetime
@@ -27,6 +29,8 @@ class LatentResearchSupervisor:
         self._stop = threading.Event()
         self._history: list[dict[str, Any]] = []
         self._events: list[dict[str, Any]] = []
+        self._last_cpu_time = time.process_time()
+        self._last_telemetry_time = time.monotonic()
         self._load_persistent_state()
         self._state: dict[str, Any] = {
             "status": "stopped", "stage": "stage_1_research", "experiment_id": None,
@@ -37,6 +41,7 @@ class LatentResearchSupervisor:
             "latent_dimensions": 3, "latent_points": 0,
             "latent_snapshot": "data/runtime/latent_points.jsonl",
             "stage_one_complete": False, "next_stage_ready": False,
+            "training_speed": 0.0, "cpu_percent": 0.0, "memory_percent": 0.0,
             "message": "Research stage has not started.",
         }
 
@@ -93,12 +98,40 @@ class LatentResearchSupervisor:
             return list(reversed(self._events[-max(1, min(limit, 100)) :]))
 
     def _set(self, **updates: Any) -> None:
+        telemetry = self._resource_telemetry()
+        updates.setdefault("training_speed", telemetry["training_speed"])
+        updates.setdefault("cpu_percent", telemetry["cpu_percent"])
+        updates.setdefault("memory_percent", telemetry["memory_percent"])
         with self._lock:
             self._state.update(updates)
             self._state["heartbeat_at"] = datetime.now(UTC).isoformat()
             state = dict(self._state)
             self._persist()
         terminal_ui.progress(state)
+
+    def _resource_telemetry(self) -> dict[str, float]:
+        now = time.monotonic()
+        cpu_now = time.process_time()
+        wall_delta = max(now - self._last_telemetry_time, 1e-6)
+        cpu_delta = max(cpu_now - self._last_cpu_time, 0.0)
+        self._last_telemetry_time = now
+        self._last_cpu_time = cpu_now
+        cpu_percent = min(100.0, (cpu_delta / wall_delta) * 100.0)
+        memory_percent = 0.0
+        try:
+            page_size = os.sysconf("SC_PAGE_SIZE")
+            rss_bytes = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024
+            total_pages = os.sysconf("SC_PHYS_PAGES")
+            total_bytes = page_size * total_pages
+            if total_bytes > 0:
+                memory_percent = min(100.0, (rss_bytes / total_bytes) * 100.0)
+        except (OSError, ValueError):
+            memory_percent = 0.0
+        return {
+            "cpu_percent": cpu_percent,
+            "memory_percent": memory_percent,
+            "training_speed": 1.0 / wall_delta,
+        }
 
     def _persist(self) -> None:
         self.state_path.parent.mkdir(parents=True, exist_ok=True)
