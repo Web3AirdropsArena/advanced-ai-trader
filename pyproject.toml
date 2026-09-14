@@ -31,6 +31,7 @@ dev = [
 
 [project.scripts]
 advanced-ai-trader = "app.cli:main"
+unicorn = "app.cli:compat_unicorn"
 
 [tool.hatch.build.targets.wheel]
 packages = ["app", "core", "data", "execution", "intelligence", "research", "security", "simulation"]
