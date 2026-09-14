@@ -214,8 +214,10 @@ class LatentResearchSupervisor:
             active=keep_awake,
         )
         try:
-            while not self._stop.is_set() and not self._state["stage_one_complete"]:
+            while not self._stop.is_set():
                 with self._lock:
+                    if self._state["stage_one_complete"]:
+                        break
                     experiment_id = str(self._state["experiment_id"] or self._experiment_id())
                     self._state["experiment_id"] = experiment_id
                 started = datetime.now(UTC).isoformat()
