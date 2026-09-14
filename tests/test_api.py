@@ -14,12 +14,23 @@ async def test_health() -> None:
 
 
 @pytest.mark.asyncio
+async def test_dashboard_is_available() -> None:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/dashboard")
+        root = await client.get("/")
+    assert response.status_code == 200
+    assert "Three independent progress meters" in response.text
+    assert "Live event stream" in response.text
+    assert root.status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_system_is_not_live_by_default() -> None:
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         response = await client.get("/api/v1/system")
     assert response.status_code == 200
     assert response.json()["live_execution"] == "disabled_until_explicit_enablement"
-    assert response.json()["web_dashboard"] == "disabled_during_research"
+    assert response.json()["web_dashboard"] == "enabled"
 
 
 @pytest.mark.asyncio
@@ -30,13 +41,14 @@ async def test_research_endpoints() -> None:
         status = await client.get("/api/v1/research/status")
         latent = await client.get("/api/v1/research/latent")
         history = await client.get("/api/v1/research/history")
-        events = await client.get("/api/v1/research/events")
+        events = await client.get("/api/v1/research/events?limit=500")
         resources = await client.get("/api/v1/research/resources")
         agents = await client.get("/api/v1/research/agents")
     assert status.status_code == 200
     body = status.json()
     assert body["market_training"] is False
     assert body["experiment_id"] is not None
+    assert body["research_started_at"] is not None
     assert body["stage_one_complete"] is False
     assert body["next_stage_ready"] is False
     assert 0.0 <= body["research_progress"] <= 15.0
@@ -49,7 +61,11 @@ async def test_research_endpoints() -> None:
     assert history.status_code == 200
     assert events.status_code == 200
     assert resources.status_code == 200
-    assert resources.json()["worker"] in {"running", "stopped"}
+    resource_body = resources.json()
+    assert resource_body["ram_total_mb"] is not None
+    assert resource_body["ram_used_mb"] is not None
+    assert resource_body["process_cpu_percent"] is not None
+    assert resource_body["worker"] in {"running", "stopped"}
     assert agents.status_code == 200
     assert len(agents.json()) >= 6
 
