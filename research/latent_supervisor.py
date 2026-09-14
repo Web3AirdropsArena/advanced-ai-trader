@@ -17,6 +17,14 @@ from research.power_guard import power_guard
 from research.terminal_ui import terminal_ui
 
 
+RESEARCH_PHASES: tuple[tuple[str, int], ...] = (
+    ("Benchmark Research", 15),
+    ("Historical Training", 35),
+    ("Walk-Forward Research", 25),
+    ("Stress & Robustness", 25),
+)
+
+
 class LatentResearchSupervisor:
     """Background benchmark training with bounded terminal/API telemetry."""
 
@@ -34,15 +42,33 @@ class LatentResearchSupervisor:
         self._last_telemetry_time = time.monotonic()
         self._load_persistent_state()
         self._state: dict[str, Any] = {
-            "status": "stopped", "stage": "stage_1_research", "experiment_id": None,
-            "model_id": None, "progress": 0.0, "epoch": 0, "epochs": 0,
-            "evaluation_interval": 2, "samples_processed": 0, "validation_loss": None,
-            "heartbeat_at": None, "started_at": None, "finished_at": None,
-            "dataset": "deterministic_benchmark_v1", "market_training": False,
-            "latent_dimensions": 3, "latent_points": 0,
+            "status": "stopped",
+            "stage": "stage_1_research",
+            "experiment_id": None,
+            "model_id": None,
+            "progress": 0.0,
+            "research_progress": 0.0,
+            "program_stage_index": 1,
+            "program_stage_count": len(RESEARCH_PHASES),
+            "program_stage_name": RESEARCH_PHASES[0][0],
+            "epoch": 0,
+            "epochs": 0,
+            "evaluation_interval": 2,
+            "samples_processed": 0,
+            "validation_loss": None,
+            "heartbeat_at": None,
+            "started_at": None,
+            "finished_at": None,
+            "dataset": "deterministic_benchmark_v1",
+            "market_training": False,
+            "latent_dimensions": 3,
+            "latent_points": 0,
             "latent_snapshot": "data/runtime/latent_points.jsonl",
-            "stage_one_complete": False, "next_stage_ready": False,
-            "training_speed": 0.0, "cpu_percent": 0.0, "memory_percent": 0.0,
+            "stage_one_complete": False,
+            "next_stage_ready": False,
+            "training_speed": 0.0,
+            "cpu_percent": 0.0,
+            "memory_percent": 0.0,
             "power_guard": power_guard.status(),
             "message": "Research stage has not started.",
         }
@@ -59,18 +85,30 @@ class LatentResearchSupervisor:
                 model_id="mlp-benchmark",
                 status="starting",
                 stage="stage_1_research",
+                progress=0.0,
+                research_progress=0.0,
+                program_stage_index=1,
+                program_stage_name=RESEARCH_PHASES[0][0],
                 started_at=now,
                 finished_at=None,
                 heartbeat_at=now,
                 message="Research supervisor starting Stage 1 benchmark training.",
             )
             self._persist()
+        terminal_ui.banner()
+        with self._lock:
             self._thread = threading.Thread(
-                target=self._run, name="latent-research-supervisor", daemon=True
+                target=self._run,
+                name="latent-research-supervisor",
+                daemon=True,
             )
             self._thread.start()
-        terminal_ui.banner()
-        self._event("research_started", "Research supervisor started.", experiment_id=experiment_id)
+        self._event(
+            "research_started",
+            "Research supervisor started.",
+            experiment_id=experiment_id,
+            data_kind="system",
+        )
 
     def stop(self) -> None:
         self._stop.set()
@@ -85,7 +123,7 @@ class LatentResearchSupervisor:
                 self._state["stage"] = "stage_1_research"
             self._state["message"] = "Research supervisor stopped."
             self._persist()
-        self._event("research_stopped", "Research supervisor stopped by operator.")
+        self._event("research_stopped", "Research supervisor stopped by operator.", data_kind="system")
 
     def mark_stage_one_complete(self, evidence: str) -> None:
         """Publish the Stage 1 -> Stage 2 handoff only after validation."""
@@ -96,13 +134,25 @@ class LatentResearchSupervisor:
             self._state["next_stage_ready"] = True
             self._state["stage"] = "stage_1_complete"
             self._state["status"] = "completed"
+            self._state["progress"] = 100.0
+            self._state["research_progress"] = float(RESEARCH_PHASES[0][1])
+            self._state["program_stage_name"] = RESEARCH_PHASES[0][0]
             self._state["finished_at"] = datetime.now(UTC).isoformat()
             self._state["stage_one_evidence"] = evidence
             self._state["power_guard"] = power_guard.status()
-            self._state["message"] = "STAGE 1 COMPLETE — validated research is ready for Stage 2."
+            self._state["message"] = (
+                "STAGE 1 COMPLETE — validated research is ready for Stage 2."
+            )
+            state = dict(self._state)
             self._persist()
         power_guard.release()
-        self._event("stage_one_completed", "STAGE 1 COMPLETE — Stage 2 handoff is ready.", evidence=evidence)
+        terminal_ui.progress(state)
+        self._event(
+            "stage_one_completed",
+            "STAGE 1 COMPLETE — Stage 2 handoff is ready.",
+            evidence=evidence,
+            data_kind="validation",
+        )
 
     def status(self) -> dict[str, Any]:
         with self._lock:
@@ -126,6 +176,17 @@ class LatentResearchSupervisor:
         updates["power_guard"] = power_guard.status()
         with self._lock:
             self._state.update(updates)
+            self._state["research_progress"] = self._overall_research_progress(
+                float(self._state.get("progress") or 0.0),
+                str(self._state.get("stage") or ""),
+            )
+            self._state["program_stage_index"] = self._stage_index(
+                str(self._state.get("stage") or "")
+            )
+            self._state["program_stage_name"] = RESEARCH_PHASES[
+                self._state["program_stage_index"] - 1
+            ][0]
+            self._state["program_stage_count"] = len(RESEARCH_PHASES)
             self._state["heartbeat_at"] = datetime.now(UTC).isoformat()
             state = dict(self._state)
             self._persist()
@@ -158,7 +219,10 @@ class LatentResearchSupervisor:
     def _persist(self) -> None:
         self.state_path.parent.mkdir(parents=True, exist_ok=True)
         temporary = self.state_path.with_suffix(".tmp")
-        temporary.write_text(json.dumps(self._state, indent=2, sort_keys=True), encoding="utf-8")
+        temporary.write_text(
+            json.dumps(self._state, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
         temporary.replace(self.state_path)
 
     def _load_persistent_state(self) -> None:
@@ -176,7 +240,12 @@ class LatentResearchSupervisor:
             self._events = []
 
     def _event(self, event_type: str, message: str, **details: Any) -> None:
-        event = {"timestamp": datetime.now(UTC).isoformat(), "type": event_type, "message": message, **details}
+        event = {
+            "timestamp": datetime.now(UTC).isoformat(),
+            "type": event_type,
+            "message": message,
+            **details,
+        }
         with self._lock:
             self._events.append(event)
             self._events = self._events[-100:]
@@ -187,10 +256,14 @@ class LatentResearchSupervisor:
 
     def _record_experiment(self, experiment_id: str, loss: float, started: str) -> None:
         record = {
-            "experiment_id": experiment_id, "model_id": "mlp-benchmark",
-            "dataset": "deterministic_benchmark_v1", "market_training": False,
-            "status": "completed", "started_at": started,
-            "finished_at": datetime.now(UTC).isoformat(), "epochs": 20,
+            "experiment_id": experiment_id,
+            "model_id": "mlp-benchmark",
+            "dataset": "deterministic_benchmark_v1",
+            "market_training": False,
+            "status": "completed",
+            "started_at": started,
+            "finished_at": datetime.now(UTC).isoformat(),
+            "epochs": 20,
             "validation_loss": None if not np.isfinite(loss) else loss,
             "latent_snapshot": "data/runtime/latent_points.jsonl",
         }
@@ -199,9 +272,17 @@ class LatentResearchSupervisor:
             self._history = self._history[-100:]
             self.history_path.parent.mkdir(parents=True, exist_ok=True)
             temporary = self.history_path.with_suffix(".tmp")
-            temporary.write_text(json.dumps(self._history, indent=2, sort_keys=True), encoding="utf-8")
+            temporary.write_text(
+                json.dumps(self._history, indent=2, sort_keys=True),
+                encoding="utf-8",
+            )
             temporary.replace(self.history_path)
-        self._event("experiment_completed", "Benchmark experiment completed.", experiment_id=experiment_id)
+        self._event(
+            "experiment_completed",
+            "Benchmark experiment completed.",
+            experiment_id=experiment_id,
+            data_kind="synthetic benchmark",
+        )
 
     def _run(self) -> None:
         keep_awake = power_guard.acquire()
@@ -212,39 +293,77 @@ class LatentResearchSupervisor:
             if keep_awake
             else "Idle/sleep prevention unavailable; research continues without it.",
             active=keep_awake,
+            data_kind="system",
         )
         try:
             while not self._stop.is_set():
                 with self._lock:
                     if self._state["stage_one_complete"]:
                         break
-                    experiment_id = str(self._state["experiment_id"] or self._experiment_id())
+                    experiment_id = str(
+                        self._state["experiment_id"] or self._experiment_id()
+                    )
                     self._state["experiment_id"] = experiment_id
                 started = datetime.now(UTC).isoformat()
                 epochs = 20
                 self._set(
-                    status="training", stage="stage_1_research", experiment_id=experiment_id,
-                    model_id="mlp-benchmark", progress=0.0, epoch=0, epochs=epochs,
-                    evaluation_interval=2, samples_processed=0, validation_loss=None,
-                    started_at=started, finished_at=None, dataset="deterministic_benchmark_v1",
-                    market_training=False, latent_points=0,
-                    message="Training benchmark model and sampling its evolving penultimate representation.",
+                    status="training",
+                    stage="stage_1_research",
+                    experiment_id=experiment_id,
+                    model_id="mlp-benchmark",
+                    progress=0.0,
+                    epoch=0,
+                    epochs=epochs,
+                    evaluation_interval=2,
+                    samples_processed=0,
+                    validation_loss=None,
+                    started_at=started,
+                    finished_at=None,
+                    dataset="deterministic_benchmark_v1",
+                    market_training=False,
+                    latent_points=0,
+                    message=(
+                        "Training benchmark model and sampling its evolving "
+                        "penultimate representation."
+                    ),
                 )
-                self._event("experiment_started", "Started benchmark experiment.", experiment_id=experiment_id)
+                self._event(
+                    "experiment_started",
+                    "Started benchmark experiment.",
+                    experiment_id=experiment_id,
+                    data_kind="synthetic benchmark",
+                )
                 loss = self._train_benchmark(experiment_id, epochs)
                 if self._stop.is_set():
                     break
                 self._set(
-                    status="completed", stage="stage_1_research_evaluation", progress=100.0,
-                    validation_loss=loss, finished_at=datetime.now(UTC).isoformat(),
-                    message="Experiment completed; Stage 1 continues until validation criteria are satisfied.",
+                    status="completed",
+                    stage="stage_1_research_evaluation",
+                    progress=100.0,
+                    validation_loss=loss,
+                    finished_at=datetime.now(UTC).isoformat(),
+                    message=(
+                        "Experiment completed; Stage 1 continues until "
+                        "validation criteria are satisfied."
+                    ),
                 )
                 self._record_experiment(experiment_id, loss, started)
                 self._stop.wait(5)
         finally:
             power_guard.release()
-            self._set(power_guard=power_guard.status())
-            self._event("power_guard_released", "Research session ended; normal power policy restored.")
+            if self._stop.is_set():
+                self._set(
+                    status="stopped",
+                    message="Research supervisor stopped by operator.",
+                    power_guard=power_guard.status(),
+                )
+            else:
+                self._set(power_guard=power_guard.status())
+            self._event(
+                "power_guard_released",
+                "Research session ended; normal power policy restored.",
+                data_kind="system",
+            )
 
     def _train_benchmark(self, experiment_id: str, epochs: int) -> float:
         seed = int(experiment_id[-8:], 16) % (2**32)
@@ -270,8 +389,12 @@ class LatentResearchSupervisor:
             error = predictions - train_y
             grad_output = (2.0 / len(train_x)) * (hidden.T @ error)
             grad_output_bias = float(2.0 * error.mean())
-            hidden_gradient = (error[:, None] * output_weights[None, :]) * (1.0 - hidden**2)
-            grad_hidden_weights = (2.0 / len(train_x)) * (train_x.T @ hidden_gradient)
+            hidden_gradient = (
+                error[:, None] * output_weights[None, :]
+            ) * (1.0 - hidden**2)
+            grad_hidden_weights = (
+                (2.0 / len(train_x)) * (train_x.T @ hidden_gradient)
+            )
             grad_hidden_bias = 2.0 * hidden_gradient.mean(axis=0)
             output_weights -= learning_rate * grad_output
             output_bias -= learning_rate * grad_output_bias
@@ -281,8 +404,10 @@ class LatentResearchSupervisor:
             eval_predictions = eval_hidden @ output_weights + output_bias
             validation_loss = float(np.mean((eval_predictions - test_y) ** 2))
             self._set(
-                progress=round(epoch * 100 / epochs, 2), epoch=epoch,
-                samples_processed=epoch * len(train_x), validation_loss=validation_loss,
+                progress=round(epoch * 100 / epochs, 2),
+                epoch=epoch,
+                samples_processed=epoch * len(train_x),
+                validation_loss=validation_loss,
                 stage="stage_1_research_training",
             )
             self._event(
@@ -292,17 +417,35 @@ class LatentResearchSupervisor:
                 progress=round(epoch * 100 / epochs, 2),
                 validation_loss=round(validation_loss, 6),
                 samples=epoch * len(train_x),
+                data_kind="training batch",
             )
             if epoch % 2 == 0 or epoch == 1:
-                labels = np.where(test_y > 0.1, "BUY", np.where(test_y < -0.1, "SELL", "HOLD"))
-                predicted = np.where(eval_predictions > 0.1, "BUY", np.where(eval_predictions < -0.1, "SELL", "HOLD"))
+                labels = np.where(
+                    test_y > 0.1,
+                    "BUY",
+                    np.where(test_y < -0.1, "SELL", "HOLD"),
+                )
+                predicted = np.where(
+                    eval_predictions > 0.1,
+                    "BUY",
+                    np.where(eval_predictions < -0.1, "SELL", "HOLD"),
+                )
                 count = self.latent_store.write_snapshot(
-                    eval_hidden, epoch, [str(value) for value in predicted.tolist()],
+                    eval_hidden,
+                    epoch,
+                    [str(value) for value in predicted.tolist()],
                     [str(value) for value in labels.tolist()],
-                    [float(value) for value in eval_predictions.tolist()], max_samples=1500,
+                    [float(value) for value in eval_predictions.tolist()],
+                    max_samples=1500,
                 )
                 self._set(stage="stage_1_latent_evaluation", latent_points=count)
-                self._event("latent_snapshot", f"Captured {count} latent points from epoch {epoch}.", epoch=epoch, points=count)
+                self._event(
+                    "latent_snapshot",
+                    f"Captured {count} latent points from epoch {epoch}.",
+                    epoch=epoch,
+                    points=count,
+                    data_kind="latent representation",
+                )
             time.sleep(0.15)
         return validation_loss
 
@@ -311,6 +454,21 @@ class LatentResearchSupervisor:
         stamp = datetime.now(UTC).isoformat()
         digest = hashlib.sha256(stamp.encode()).hexdigest()[:12]
         return f"exp-{digest}"
+
+    @staticmethod
+    def _stage_index(stage: str) -> int:
+        if stage.startswith("stage_1"):
+            return 1
+        return 1
+
+    @staticmethod
+    def _overall_research_progress(phase_progress: float, stage: str) -> float:
+        phase_progress = max(0.0, min(100.0, phase_progress))
+        if stage == "stage_1_complete":
+            return float(RESEARCH_PHASES[0][1])
+        if stage.startswith("stage_1"):
+            return round(RESEARCH_PHASES[0][1] * phase_progress / 100.0, 2)
+        return float(RESEARCH_PHASES[0][1])
 
 
 supervisor = LatentResearchSupervisor()
