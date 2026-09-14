@@ -48,7 +48,7 @@ class ResearchTerminalUI:
     @staticmethod
     def _bar(value: float, width: int) -> str:
         value = max(0.0, min(100.0, value))
-        filled = int(round(width * value / 100.0))
+        filled = round(width * value / 100.0)
         return "█" * filled + "░" * (width - filled)
 
     def _row(self, text: str, width: int, color: str | None = None) -> str:
