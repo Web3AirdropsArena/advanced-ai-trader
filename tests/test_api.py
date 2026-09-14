@@ -2,7 +2,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from app.api import app
-from research.latent_supervisor import LatentResearchSupervisor
+from research.latent_supervisor import LatentResearchSupervisor, RESEARCH_PHASES
 
 
 @pytest.mark.asyncio
@@ -34,10 +34,15 @@ async def test_research_endpoints() -> None:
         resources = await client.get("/api/v1/research/resources")
         agents = await client.get("/api/v1/research/agents")
     assert status.status_code == 200
-    assert status.json()["market_training"] is False
-    assert status.json()["experiment_id"] is not None
-    assert status.json()["stage_one_complete"] is False
-    assert status.json()["next_stage_ready"] is False
+    body = status.json()
+    assert body["market_training"] is False
+    assert body["experiment_id"] is not None
+    assert body["stage_one_complete"] is False
+    assert body["next_stage_ready"] is False
+    assert 0.0 <= body["research_progress"] <= 15.0
+    assert body["program_stage_index"] == 1
+    assert body["program_stage_count"] == len(RESEARCH_PHASES)
+    assert body["program_stage_name"] == RESEARCH_PHASES[0][0]
     assert latent.status_code == 200
     assert latent.json()["dimensions"] == 3
     assert isinstance(latent.json()["points"], list)
@@ -76,4 +81,14 @@ def test_stage_one_completion_publishes_stage_two_signal(tmp_path) -> None:
     assert status["stage_one_complete"] is True
     assert status["next_stage_ready"] is True
     assert status["stage"] == "stage_1_complete"
+    assert status["progress"] == 100.0
+    assert status["research_progress"] == RESEARCH_PHASES[0][1]
     assert "STAGE 1 COMPLETE" in status["message"]
+
+
+def test_research_progress_is_stage_weighted(tmp_path) -> None:
+    supervisor = LatentResearchSupervisor(tmp_path / "status.json")
+    supervisor._set(stage="stage_1_research_training", progress=50.0)
+    status = supervisor.status()
+    assert status["research_progress"] == RESEARCH_PHASES[0][1] / 2
+    assert status["program_stage_index"] == 1
